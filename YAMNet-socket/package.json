@@ -1,7 +1,7 @@
 {
   "name": "kromosynth-evaluate",
   "version": "1.0.0",
-  "description": "Evaluation (websocket) service for sound genes during Quality Diversity search for sounds",
+  "description": "Evaluation (websocket) service for sounds",
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
@@ -10,8 +10,11 @@
   "license": "AGPL-3.0-or-later",
   "dependencies": {
     "kromosynth": "file:../../kromosynth",
+    "minimist": "^1.2.8",
     "ws": "^8.14.1"
   },
-  "trustedDependencies": ["gl"],
+  "trustedDependencies": [
+    "gl"
+  ],
   "type": "module"
 }
