@@ -1,6 +1,8 @@
 import { WebSocketServer } from "ws";
 import { getAudioClassPredictions} from "kromosynth";
 import parseArgs from 'minimist';
+import os from "os";
+import fs from "fs";
 const argv = parseArgs(process.argv.slice(2));
 let port;
 let host;
