@@ -32,6 +32,7 @@ wss.on("connection", (ws) => {
   ws.on("message", async (message) => {
     const buffer = new Uint8Array( message );
     const channelData = new Float32Array( buffer.buffer );
+    console.log(`Predicting audio classes from  ${channelData.length} samples`);
     const predictions = await getAudioClassPredictions(
       channelData,
       classificationGraphModel, modelUrl, useGPU
