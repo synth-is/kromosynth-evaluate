@@ -36,7 +36,7 @@ wss.on("connection", (ws) => {
       channelData,
       classificationGraphModel, modelUrl, useGPU
     );
-    console.log(predictions);
+    // console.log(predictions);
     ws.send(JSON.stringify(predictions));
   });
 });
