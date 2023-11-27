@@ -12,8 +12,9 @@ if( argv.hostInfoFilePath ) {
   port = 40051;
   argv.hostInfoFilePath.substring(argv.hostInfoFilePath.lastIndexOf("host-")+5).split("-").reverse().forEach( (i, idx) => port += parseInt(i) * (idx+1*10) );
   host = os.hostname();
-  console.log("--- hostname:", host);
-  fs.writeFile(argv.hostInfoFilePath, host, () => console.log(`Wrote hostname to ${argv.hostInfoFilePath}`));
+  const hostname = `${host}:${port}`;
+  console.log("--- hostname:", hostname);
+  fs.writeFile(argv.hostInfoFilePath, hostname, () => console.log(`Wrote hostname to ${argv.hostInfoFilePath}`));
 } else {
   port = argv.port || process.env.PORT || '40051';
   host = "0.0.0.0";
@@ -26,8 +27,11 @@ const wss = new WebSocketServer({ host, port });
 
 // TODO: read from parameters
 const classificationGraphModel = "yamnet";
-const modelUrl = "file:///Users/bjornpjo/Developer/vendor/tfjs-model_yamnet_tfjs_1/model.json";
-const useGPU = true;
+console.log("classificationGraphModel:",classificationGraphModel);
+const modelUrl = argv.modelUrl;
+console.log("modelUrl:",modelUrl);
+const useGPU = argv.useGPU;;
+console.log("useGPU:",useGPU);
 
 wss.on("connection", (ws) => {
   ws.on('error', console.error);
