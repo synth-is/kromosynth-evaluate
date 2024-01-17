@@ -39,13 +39,13 @@ async def socket_server(websocket, path):
     data = await websocket.recv()
     jsonData = json.loads(data)  # receive JSON
 
-    print('JSON data received: ', jsonData)
+    # print('JSON data received: ', jsonData)
 
     projection = get_pca_projection(jsonData['feature_vectors'], dimensions)
 
-    print('projection: ', projection)
+    # print('projection: ', projection)
 
-    fitness_values = jsonData['fitness_values']
+    # fitness_values = jsonData['fitness_values']
 
     cell_range_min = 0
     cell_range_max = 1
@@ -58,14 +58,18 @@ async def socket_server(websocket, path):
     for element in projection:
         discretised_projection.append(vector_to_index(element, cell_range_min, cell_range_max, cells, dimensions))
 
-    # ensure there is only one element per cell
-    unique_projection, unique_fitness_values, indices_to_keep = remove_duplicates_keep_highest(discretised_projection, fitness_values)
+    print('discretised_projection: ', discretised_projection)
 
-    print(unique_projection)  # Should print the unique tuples
-    print(unique_fitness_values)  # Should print corresponding highest fitness values
+    # TOD abandoning filtering of duplicates for now, as elite replacement currently handles this, in quality-diversity-search.js (kromosynth-qd)
+    # ensure there is only one element per cell
+    # unique_projection, unique_fitness_values, indices_to_keep = remove_duplicates_keep_highest(discretised_projection, fitness_values)
+
+    # print(unique_projection)  # Should print the unique tuples
+    # print(unique_fitness_values)  # Should print corresponding highest fitness values
 
     # Send a JSON response back to the client
-    response = {'status': 'OK', 'feature_map': unique_projection, 'fitness_values': unique_fitness_values, 'indices_to_keep': indices_to_keep}
+    # response = {'status': 'OK', 'feature_map': unique_projection, 'fitness_values': unique_fitness_values, 'indices_to_keep': indices_to_keep}
+    response = {'status': 'OK', 'feature_map': discretised_projection}
     await websocket.send(json.dumps(response))
 
 # Parse command line arguments

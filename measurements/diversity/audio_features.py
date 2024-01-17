@@ -24,10 +24,7 @@ def get_mfcc_feature_means_stdv_firstorderdifference_concatenated(audio_data, sa
     mfcc_feature_means = np.mean(mfcc_features, axis=0)
     mfcc_feature_stdv = np.std(mfcc_features, axis=0)
 
-    # # Calculate the first-order difference of each MFCC feature
-    # mfcc_feature_firstorderdifference = np.diff(mfcc_features, axis=0)
-
-    # Get the average difference of the features
+    # Get the average difference of the features (first order difference)
     average_difference_features = np.zeros((num_mfccs,))
     for i in range(0, len(mfcc_features) - 2, 2):
         average_difference_features += mfcc_features[i] - mfcc_features[i+1]
