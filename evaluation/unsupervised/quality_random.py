@@ -9,7 +9,7 @@ import numpy as np
 # import the function get_mfcc_feature_means_stdv_firstorderdifference_concatenated from measurements/diversity/mfcc.py
 import sys
 sys.path.append('../..')
-from measurements.quality.performance import fitness_random
+from measurements.quality.random import fitness_random
 
 async def socket_server(websocket, path):
     # Wait for the first message and determine its type
