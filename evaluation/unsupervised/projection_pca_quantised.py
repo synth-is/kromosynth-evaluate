@@ -41,7 +41,12 @@ async def socket_server(websocket, path):
 
     # print('JSON data received: ', jsonData)
 
-    projection = get_pca_projection(jsonData['feature_vectors'], dimensions)
+    try:
+        projection = get_pca_projection(jsonData['feature_vectors'], dimensions)
+    except ValueError as e:
+        response = {'status': 'ERROR', 'message': str(e)}
+        await websocket.send(json.dumps(response))
+        return
 
     # print('projection: ', projection)
 
@@ -58,7 +63,7 @@ async def socket_server(websocket, path):
     for element in projection:
         discretised_projection.append(vector_to_index(element, cell_range_min, cell_range_max, cells, dimensions))
 
-    print('discretised_projection: ', discretised_projection)
+    print('discretised_projection size: ', len(discretised_projection))
 
     # TOD abandoning filtering of duplicates for now, as elite replacement currently handles this, in quality-diversity-search.js (kromosynth-qd)
     # ensure there is only one element per cell
@@ -84,7 +89,11 @@ print('Starting projection WebSocket server at ws://{}:{}'.format(args.host, arg
 
 dimensions = args.dimensions
 
-start_server = websockets.serve(socket_server, args.host, args.port)
+MAX_MESSAGE_SIZE = 100 * 1024 * 1024  # 100MB
+start_server = websockets.serve(socket_server, 
+                                args.host, 
+                                args.port,
+                                max_size=MAX_MESSAGE_SIZE)
 
 asyncio.get_event_loop().run_until_complete(start_server)
 asyncio.get_event_loop().run_forever()

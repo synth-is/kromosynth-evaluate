@@ -202,7 +202,7 @@ def noise_burst_percentage(audio_data, sample_rate):
     indexes = noiseBurstDetector(frame)
     noise_indexes.extend(indexes)
 
-  print ("Noise indexes:", noise_indexes)
+  # print ("Noise indexes:", noise_indexes)
 
   noise_burst_percentage = len(noise_indexes) / len(audio_data)
   print("Noise burst percentage:", noise_burst_percentage)
