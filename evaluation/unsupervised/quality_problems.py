@@ -6,6 +6,9 @@ import websockets
 import json
 import argparse
 import numpy as np
+import os
+from setproctitle import setproctitle
+import time
 
 # import the function get_mfcc_feature_means_stdv_firstorderdifference_concatenated from measurements/diversity/mfcc.py
 import sys
@@ -17,6 +20,7 @@ async def socket_server(websocket, path):
     message = await websocket.recv()
 
     if isinstance(message, bytes):
+        start = time.time()
         # Received binary message (assume it's an audio buffer)
         audio_data = message
         print('Audio data received for fitness evaluation')
@@ -49,6 +53,9 @@ async def socket_server(websocket, path):
         # lower value, the better
         fitness_value = sum(fitness_percentages) / len(fitness_percentages)
 
+        end = time.time()
+        print('quality_problems: Time taken to evaluate fitness:', end - start)
+
         print('Fitness value:', fitness_value)
 
         response = {'status': 'received standalone audio', 'fitness': fitness_value}
@@ -60,6 +67,7 @@ parser.add_argument('--host', type=str, default='localhost', help='Host to run t
 parser.add_argument('--port', type=int, default=8080, help='Port number to run the WebSocket server on.')
 parser.add_argument('--sample-rate', type=int, default=16000, help='Sample rate of the audio data.')
 parser.add_argument('--quality-methods', type=str, default='click_count_percentage', help='Quality methods to use.')
+parser.add_argument('--process-title', type=str, default='quality_problems', help='Process title to use.')
 args = parser.parse_args()
 
 sample_rate = args.sample_rate
@@ -67,10 +75,18 @@ sample_rate = args.sample_rate
 # parse the comma separted list of quality methods
 quality_methods = args.quality_methods.split(',')
 
-print('Starting fitness / quality WebSocket server at ws://{}:{}'.format(args.host, args.port))
+# set PORT as either the environment variable or the default value
+PORT = int(os.environ.get('PORT', args.port))
 
+# set PROCESS_TITLE as either the environment variable or the default value
+PROCESS_TITLE = os.environ.get('PROCESS_TITLE', args.process_title)
+setproctitle(PROCESS_TITLE)
+
+print('Starting fitness / quality WebSocket server at ws://{}:{}'.format(args.host, PORT))
 # Start the WebSocket server with supplied command line arguments
-start_server = websockets.serve(socket_server, args.host, args.port)
+start_server = websockets.serve(socket_server, 
+                                args.host, 
+                                PORT)
 
 asyncio.get_event_loop().run_until_complete(start_server)
 asyncio.get_event_loop().run_forever()

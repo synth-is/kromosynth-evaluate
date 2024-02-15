@@ -4,6 +4,9 @@ import asyncio
 import websockets
 import json
 import argparse
+import os
+from setproctitle import setproctitle
+import time
 
 import sys
 sys.path.append('../..')
@@ -37,20 +40,26 @@ def remove_duplicates_keep_highest(discretised_projection, fitness_values):
 
 async def socket_server(websocket, path):
     data = await websocket.recv()
+
+    # start time
+    start = time.time()
+
     jsonData = json.loads(data)  # receive JSON
 
     # print('JSON data received: ', jsonData)
 
     try:
-        projection = get_pca_projection(jsonData['feature_vectors'], dimensions)
+        feature_vectors = jsonData['feature_vectors']
+        should_fit = jsonData['should_fit'] 
+        print('should_fit: ', should_fit)
+        evorun_dir = jsonData['evorun_dir']
+        projection = get_pca_projection(feature_vectors, dimensions, should_fit, evorun_dir)
     except ValueError as e:
         response = {'status': 'ERROR', 'message': str(e)}
         await websocket.send(json.dumps(response))
         return
 
     # print('projection: ', projection)
-
-    # fitness_values = jsonData['fitness_values']
 
     cell_range_min = 0
     cell_range_max = 1
@@ -62,6 +71,9 @@ async def socket_server(websocket, path):
     discretised_projection = []
     for element in projection:
         discretised_projection.append(vector_to_index(element, cell_range_min, cell_range_max, cells, dimensions))
+
+    end = time.time()
+    print('projection_pca_quantised: Time taken to process: ', end - start)
 
     print('discretised_projection size: ', len(discretised_projection))
 
@@ -83,16 +95,24 @@ parser.add_argument('--host', type=str, default='localhost', help='Host to run t
 parser.add_argument('--port', type=int, default=8080, help='Port number to run the WebSocket server on.')
 parser.add_argument('--dimensions', type=int, default=2, help='Number of dimensions to reduce to.')
 parser.add_argument('--dimension-cells', type=int, default=10, help='Number of cells in each dimension.')
+parser.add_argument('--process-title', type=str, default='projection_pca_quantised', help='Process title to use.')
 args = parser.parse_args()
-
-print('Starting projection WebSocket server at ws://{}:{}'.format(args.host, args.port))
 
 dimensions = args.dimensions
 
+# set PORT as either the environment variable or the default value
+PORT = int(os.environ.get('PORT', args.port))
+
+# set PROCESS_TITLE as either the environment variable or the default value
+PROCESS_TITLE = os.environ.get('PROCESS_TITLE', args.process_title)
+setproctitle(PROCESS_TITLE)
+
 MAX_MESSAGE_SIZE = 100 * 1024 * 1024  # 100MB
+
+print('Starting projection WebSocket server at ws://{}:{}'.format(args.host, PORT))
 start_server = websockets.serve(socket_server, 
                                 args.host, 
-                                args.port,
+                                PORT,
                                 max_size=MAX_MESSAGE_SIZE)
 
 asyncio.get_event_loop().run_until_complete(start_server)
