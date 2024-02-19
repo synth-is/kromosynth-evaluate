@@ -72,6 +72,7 @@ parser.add_argument('--port', type=int, default=8080, help='Port number to run t
 parser.add_argument('--sample-rate', type=int, default=48000, help='Sample rate of the audio data.')
 parser.add_argument('--quality-methods', type=str, default='roughness_median', help='Quality methods to use.')
 parser.add_argument('--process-title', type=str, default='quality_psychoacoustic', help='Process title to use.')
+parser.add_argument('--host-info-file', type=str, default='', help='Host information file to use.')
 args = parser.parse_args()
 
 sample_rate = args.sample_rate
@@ -79,19 +80,37 @@ sample_rate = args.sample_rate
 # parse the comma separted list of quality methods
 quality_methods = args.quality_methods.split(',')
 
-# set PORT as either the environment variable or the default value
-PORT = int(os.environ.get('PORT', args.port))
-
 # set PROCESS_TITLE as either the environment variable or the default value
 PROCESS_TITLE = os.environ.get('PROCESS_TITLE', args.process_title)
 setproctitle(PROCESS_TITLE)
 
+# set PORT as either the environment variable or the default value
+PORT = int(os.environ.get('PORT', args.port))
+
+HOST = args.host
+
+# if the host-info-file is not empty
+if args.host_info_file:
+    # automatically assign the host IP from the machine's hostname
+    HOST = os.uname().nodename
+    # the host-info-file name ends with "host-" and an index number: host-0, host-1, etc.
+    # - for each comonent of that index number, add that number plus 1 to PORT and assign to the variable PORT
+
+    # set host_info_file_index as the index after "host-" in the host-info-file
+    host_info_file_index = args.host_info_file.split('host-')[1]
+    # add that index to PORT
+    PORT += int(host_info_file_index) + 1
+
+    # write the host IP and port to the host-info-file
+    with open(args.host_info_file, 'w') as f:
+        f.write('{}:{}'.format(HOST, PORT))
+
 MAX_MESSAGE_SIZE = 100 * 1024 * 1024  # 100MB
 
-print('Starting fitness / sound quality (psychoacoustic) WebSocket server at ws://{}:{}'.format(args.host, PORT))
+print('Starting fitness / sound quality (psychoacoustic) WebSocket server at ws://{}:{}'.format(HOST, PORT))
 # Start the WebSocket server with supplied command line arguments
 start_server = websockets.serve(socket_server, 
-                                args.host, 
+                                HOST, 
                                 PORT,
                                 max_size=MAX_MESSAGE_SIZE)
 
