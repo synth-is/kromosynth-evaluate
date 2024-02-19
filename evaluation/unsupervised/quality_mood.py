@@ -28,23 +28,23 @@ async def socket_server(websocket, path):
         audio_data = np.frombuffer(audio_data, dtype=np.float32)
         
         fitness_percentages = []
-        for method in quality_methods:
+        for method in QUALITY_METHODS:
           if method == 'mood_aggressive':
-            fitness_percentages.append(mood_aggressive(audio_data))
+            fitness_percentages.append(mood_aggressive(audio_data, MODELS_PATH))
           elif method == 'mood_happy':
-            fitness_percentages.append(mood_happy(audio_data))
+            fitness_percentages.append(mood_happy(audio_data, MODELS_PATH))
           elif method == 'mood_non_happy':
-            fitness_percentages.append(mood_non_happy(audio_data))
+            fitness_percentages.append(mood_non_happy(audio_data, MODELS_PATH))
           elif method == 'mood_party':
-            fitness_percentages.append(mood_party(audio_data))
+            fitness_percentages.append(mood_party(audio_data, MODELS_PATH))
           elif method == 'mood_relaxed':
-            fitness_percentages.append(mood_relaxed(audio_data))
+            fitness_percentages.append(mood_relaxed(audio_data, MODELS_PATH))
           elif method == 'mood_sad':
-            fitness_percentages.append(mood_sad(audio_data))
+            fitness_percentages.append(mood_sad(audio_data, MODELS_PATH))
           elif method == 'mood_acoustic':
-            fitness_percentages.append(mood_acoustic(audio_data))
+            fitness_percentages.append(mood_acoustic(audio_data, MODELS_PATH))
           elif method == 'mood_electronic':
-            fitness_percentages.append(mood_electronic(audio_data))
+            fitness_percentages.append(mood_electronic(audio_data, MODELS_PATH))
 
         print('sound quality percentages (mood):', fitness_percentages)
 
@@ -66,12 +66,15 @@ parser.add_argument('--port', type=int, default=8080, help='Port number to run t
 parser.add_argument('--sample-rate', type=int, default=48000, help='Sample rate of the audio data.')
 parser.add_argument('--quality-methods', type=str, default='mood_happy', help='Quality methods to use.')
 parser.add_argument('--process-title', type=str, default='quality_mood', help='Process title to use.')
+parser.add_argument('--models-path', type=str, default='../../measurements/models', help='Path to classification models.')
 args = parser.parse_args()
 
 sample_rate = args.sample_rate
 
 # parse the comma separted list of quality methods
-quality_methods = args.quality_methods.split(',')
+QUALITY_METHODS = args.quality_methods.split(',')
+
+MODELS_PATH = args.models_path
 
 # set PORT as either the environment variable or the default value
 PORT = int(os.environ.get('PORT', args.port))
