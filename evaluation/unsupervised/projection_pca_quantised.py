@@ -54,23 +54,26 @@ async def socket_server(websocket, path):
         print('should_fit: ', should_fit)
         evorun_dir = jsonData['evorun_dir']
         projection = get_pca_projection(feature_vectors, dimensions, should_fit, evorun_dir)
+
+        print('projection', projection)
+
+        cell_range_min = 0
+        cell_range_max = 1
+        # discretise / quantise the projection
+        # for each element in the projection, calculate the index of the cell it belongs to
+        # scale the range of each cell value to the range 0 to 1 with a call like:
+        # vector_to_index(v, cell_range_min, cell_range_max, cells, dimensions)
+        cells = args.dimension_cells
+        discretised_projection = []
+        for element in projection:
+            discretised_vector = vector_to_index(element, cell_range_min, cell_range_max, cells, dimensions)
+            print('discretised_vector', discretised_vector)
+            discretised_projection.append(discretised_vector)
     except ValueError as e:
+        print('Error: ', str(e))
         response = {'status': 'ERROR', 'message': str(e)}
         await websocket.send(json.dumps(response))
         return
-
-    # print('projection: ', projection)
-
-    cell_range_min = 0
-    cell_range_max = 1
-    # discretise / quantise the projection
-    # for each element in the projection, calculate the index of the cell it belongs to
-    # scale the range of each cell value to the range 0 to 1 with a call like:
-    # vector_to_index(v, cell_range_min, cell_range_max, cells, dimensions)
-    cells = args.dimension_cells
-    discretised_projection = []
-    for element in projection:
-        discretised_projection.append(vector_to_index(element, cell_range_min, cell_range_max, cells, dimensions))
 
     end = time.time()
     print('projection_pca_quantised: Time taken to process: ', end - start)
