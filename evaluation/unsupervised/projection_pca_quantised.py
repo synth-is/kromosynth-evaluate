@@ -92,6 +92,7 @@ async def socket_server(websocket, path):
 # Parse command line arguments
 parser = argparse.ArgumentParser(description='Run a WebSocket server.')
 parser.add_argument('--host', type=str, default='localhost', help='Host to run the WebSocket server on.')
+parser.add_argument('--force-host', type=bool, default=False, help='Force the host to be the one specified in the host argument.') # e.g for the ROBIN-HPC
 parser.add_argument('--port', type=int, default=8080, help='Port number to run the WebSocket server on.')
 parser.add_argument('--dimensions', type=int, default=2, help='Number of dimensions to reduce to.')
 parser.add_argument('--dimension-cells', type=int, default=10, help='Number of cells in each dimension.')
@@ -113,7 +114,8 @@ HOST = args.host
 # if the host-info-file is not empty
 if args.host_info_file:
     # automatically assign the host IP from the machine's hostname
-    HOST = os.uname().nodename
+    if not args.force_host:
+        HOST = os.uname().nodename
     # the host-info-file name ends with "host-" and an index number: host-0, host-1, etc.
     # - for each comonent of that index number, add that number plus 1 to PORT and assign to the variable PORT
 
