@@ -11,8 +11,16 @@ def vector_to_index(v, range_min, range_max, cells, dimensions):
     for i in range(n):
         low, high, cells = bounds[i]
         # print('low', low, 'high', high, 'cells', cells, 'v[i]', v[i])
-        if int(v[i]) < low or int(v[i]) > high: # int cast to avoid float comparison errors, e.g. v[i] can sometimes be 1.0000000000000002 instead of 1.0
-            raise ValueError(f"Value v[{i}] is out of bounds.")
+
+        # if int(v[i]) < low or int(v[i]) > high: # int cast to avoid float comparison errors, e.g. v[i] can sometimes be 1.0000000000000002 instead of 1.0
+        #     raise ValueError(f"Value v[{i}] is out of bounds.")
+        
+        # if v[i] < low or v[i] > high, assume it is falling out of bounds, becuase the projection hasn't been retrained yet, 
+        # - and set it to the boundary value
+        if v[i] < low:
+            v[i] = low
+        elif v[i] > high:
+            v[i] = high
         
         # Map the value v[i] to a cell index
         step = (high - low) / cells
