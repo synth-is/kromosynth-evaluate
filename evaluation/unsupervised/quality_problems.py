@@ -14,6 +14,7 @@ import time
 import sys
 sys.path.append('../..')
 from measurements.quality.quality_control import click_count_percentage, discontinuity_count_percentage, gaps_count_percentage, hum_precence_percentage, saturation_percentage, signal_to_noise_percentage_of_excellence, true_peak_clipping_percentage, noise_burst_percentage, compressibility_percentage
+from util import filepath_to_port
 
 async def socket_server(websocket, path):
     # Wait for the first message and determine its type
@@ -94,10 +95,7 @@ if args.host_info_file:
     # the host-info-file name ends with "host-" and an index number: host-0, host-1, etc.
     # - for each comonent of that index number, add that number plus 1 to PORT and assign to the variable PORT
 
-    # set host_info_file_index as the index after "host-" in the host-info-file
-    host_info_file_index = args.host_info_file.split('host-')[1]
-    # add that index to PORT
-    PORT += int(host_info_file_index) + 1
+    PORT = filepath_to_port(args.host_info_file)
 
     # write the host IP and port to the host-info-file
     with open(args.host_info_file, 'w') as f:
