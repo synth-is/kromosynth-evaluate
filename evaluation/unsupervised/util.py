@@ -6,7 +6,9 @@ import hashlib
 def filepath_to_port(filepath):
     hash_val = hashlib.md5(filepath.encode('utf-8')).hexdigest()
     short_hash = int(hash_val[:8], 16)  # Take first 8 characters for a wider range of values
-    port = 1024 + short_hash % (65535 - 1024)  # Add 1024 to ensure port is above 1023
+    port_lower_bound = 8192 # 1024
+    port_upper_bound = 65535
+    port = port_lower_bound + short_hash % (port_upper_bound - port_lower_bound)
     return port
 
 # Alternatively check if the port is already in use and try another one - not tested:
