@@ -21,49 +21,54 @@ from measurements.quality.quality_psychoacoustic import (
 from util import filepath_to_port
 
 async def socket_server(websocket, path):
-    # Wait for the first message and determine its type
-    message = await websocket.recv()
+    try:
+      # Wait for the first message and determine its type
+      message = await websocket.recv()
 
-    if isinstance(message, bytes):
-        start = time.time()
-        # Received binary message (assume it's an audio buffer)
-        audio_data = message
-        print('Audio data received for fitness evaluation, by sound quality (SQ) metrics')
-        # convert the audio data to a numpy array
-        audio_data = np.frombuffer(audio_data, dtype=np.float32)
-        
-        fitness_percentages = []
-        for method in quality_methods:
-          if method == 'roughness_average':
-            fitness_percentages.append(1 - roughness_dw_score_average(audio_data, sample_rate))
-          elif method == 'roughness_median':
-            fitness_percentages.append(1 - roughness_dw_score_median(audio_data, sample_rate))
-          elif method == 'roughness_95th_percentile':
-            fitness_percentages.append(1 - roughness_dw_score_95th_percentile(audio_data, sample_rate))
-          elif method == 'loudness_average':
-            fitness_percentages.append(loudness_zwicker_score_average(audio_data, sample_rate))
-          elif method == 'loudness_median':
-            fitness_percentages.append(loudness_zwicker_score_median(audio_data, sample_rate))
-          elif method == 'loudness_95th_percentile':
-            fitness_percentages.append(loudness_zwicker_score_95th_percentile(audio_data, sample_rate))
-          elif method == 'equal_loudness_contour_average':
-            fitness_percentages.append(equal_loudness_contour_score_average(audio_data, sample_rate))
-          elif method == 'equal_loudness_contour_median':
-            fitness_percentages.append(equal_loudness_contour_score_median(audio_data, sample_rate))
-          elif method == 'equal_loudness_contour_95th_percentile':
-            fitness_percentages.append(equal_loudness_contour_score_95th_percentile(audio_data, sample_rate))
+      if isinstance(message, bytes):
+          start = time.time()
+          # Received binary message (assume it's an audio buffer)
+          audio_data = message
+          print('Audio data received for fitness evaluation, by sound quality (SQ) metrics')
+          # convert the audio data to a numpy array
+          audio_data = np.frombuffer(audio_data, dtype=np.float32)
+          
+          fitness_percentages = []
+          for method in quality_methods:
+            if method == 'roughness_average':
+              fitness_percentages.append(1 - roughness_dw_score_average(audio_data, sample_rate))
+            elif method == 'roughness_median':
+              fitness_percentages.append(1 - roughness_dw_score_median(audio_data, sample_rate))
+            elif method == 'roughness_95th_percentile':
+              fitness_percentages.append(1 - roughness_dw_score_95th_percentile(audio_data, sample_rate))
+            elif method == 'loudness_average':
+              fitness_percentages.append(loudness_zwicker_score_average(audio_data, sample_rate))
+            elif method == 'loudness_median':
+              fitness_percentages.append(loudness_zwicker_score_median(audio_data, sample_rate))
+            elif method == 'loudness_95th_percentile':
+              fitness_percentages.append(loudness_zwicker_score_95th_percentile(audio_data, sample_rate))
+            elif method == 'equal_loudness_contour_average':
+              fitness_percentages.append(equal_loudness_contour_score_average(audio_data, sample_rate))
+            elif method == 'equal_loudness_contour_median':
+              fitness_percentages.append(equal_loudness_contour_score_median(audio_data, sample_rate))
+            elif method == 'equal_loudness_contour_95th_percentile':
+              fitness_percentages.append(equal_loudness_contour_score_95th_percentile(audio_data, sample_rate))
 
-        print('sound quality percentages (psychoacoustic):', fitness_percentages)
+          print('sound quality percentages (psychoacoustic):', fitness_percentages)
 
-        # lower value, the better
-        fitness_value = sum(fitness_percentages) / len(fitness_percentages)
+          # lower value, the better
+          fitness_value = sum(fitness_percentages) / len(fitness_percentages)
 
-        print('Fitness value (SQ):', fitness_value)
+          print('Fitness value (SQ):', fitness_value)
 
-        end = time.time()
-        print('quality_psychoacoustic: Time taken to evaluate fitness:', end - start)
+          end = time.time()
+          print('quality_psychoacoustic: Time taken to evaluate fitness:', end - start)
 
-        response = {'status': 'received standalone audio', 'fitness': fitness_value}
+          response = {'status': 'received standalone audio', 'fitness': fitness_value}
+          await websocket.send(json.dumps(response))
+    except Exception as e:
+        print('quality_psychoacoustic: Exception:', e)
+        response = {'status': 'ERROR', 'message': str(e)}
         await websocket.send(json.dumps(response))
 
 # Parse command line arguments

@@ -17,49 +17,54 @@ from measurements.quality.quality_control import click_count_percentage, discont
 from util import filepath_to_port
 
 async def socket_server(websocket, path):
-    # Wait for the first message and determine its type
-    message = await websocket.recv()
+    try:
+      # Wait for the first message and determine its type
+      message = await websocket.recv()
 
-    if isinstance(message, bytes):
-        start = time.time()
-        # Received binary message (assume it's an audio buffer)
-        audio_data = message
-        print('Audio data received for fitness evaluation')
-        # convert the audio data to a numpy array
-        audio_data = np.frombuffer(audio_data, dtype=np.float32)
-        
-        fitness_percentages = []
-        for method in quality_methods:
-            if method == 'click_count_percentage':
-              fitness_percentages.append(1 - click_count_percentage(audio_data, sample_rate))
-            elif method == 'discontinuity_count_percentage':
-              fitness_percentages.append(1 - discontinuity_count_percentage(audio_data, sample_rate))
-            elif method == 'gaps_count_percentage':
-              fitness_percentages.append(1 - gaps_count_percentage(audio_data, sample_rate))
-            elif method == 'hum_precence_percentage':
-              fitness_percentages.append(1 - hum_precence_percentage(audio_data, sample_rate))
-            elif method == 'saturation_percentage':
-              fitness_percentages.append(1 - saturation_percentage(audio_data, sample_rate))
-            elif method == 'signal_to_noise_percentage_of_excellence':
-              fitness_percentages.append(1 - signal_to_noise_percentage_of_excellence(audio_data, sample_rate))
-            elif method == 'true_peak_clipping_percentage':
-              fitness_percentages.append(1 - true_peak_clipping_percentage(audio_data, sample_rate))
-            elif method == 'noise_burst_percentage':
-              fitness_percentages.append(1 - noise_burst_percentage(audio_data, sample_rate))
-            elif method == 'compressibility_percentage':
-              fitness_percentages.append(compressibility_percentage(audio_data))
+      if isinstance(message, bytes):
+          start = time.time()
+          # Received binary message (assume it's an audio buffer)
+          audio_data = message
+          print('Audio data received for fitness evaluation')
+          # convert the audio data to a numpy array
+          audio_data = np.frombuffer(audio_data, dtype=np.float32)
+          
+          fitness_percentages = []
+          for method in quality_methods:
+              if method == 'click_count_percentage':
+                fitness_percentages.append(1 - click_count_percentage(audio_data, sample_rate))
+              elif method == 'discontinuity_count_percentage':
+                fitness_percentages.append(1 - discontinuity_count_percentage(audio_data, sample_rate))
+              elif method == 'gaps_count_percentage':
+                fitness_percentages.append(1 - gaps_count_percentage(audio_data, sample_rate))
+              elif method == 'hum_precence_percentage':
+                fitness_percentages.append(1 - hum_precence_percentage(audio_data, sample_rate))
+              elif method == 'saturation_percentage':
+                fitness_percentages.append(1 - saturation_percentage(audio_data, sample_rate))
+              elif method == 'signal_to_noise_percentage_of_excellence':
+                fitness_percentages.append(1 - signal_to_noise_percentage_of_excellence(audio_data, sample_rate))
+              elif method == 'true_peak_clipping_percentage':
+                fitness_percentages.append(1 - true_peak_clipping_percentage(audio_data, sample_rate))
+              elif method == 'noise_burst_percentage':
+                fitness_percentages.append(1 - noise_burst_percentage(audio_data, sample_rate))
+              elif method == 'compressibility_percentage':
+                fitness_percentages.append(compressibility_percentage(audio_data))
 
-        print('Problem percentages:', fitness_percentages)
+          print('Problem percentages:', fitness_percentages)
 
-        # lower value, the better
-        fitness_value = sum(fitness_percentages) / len(fitness_percentages)
+          # lower value, the better
+          fitness_value = sum(fitness_percentages) / len(fitness_percentages)
 
-        end = time.time()
-        print('quality_problems: Time taken to evaluate fitness:', end - start)
+          end = time.time()
+          print('quality_problems: Time taken to evaluate fitness:', end - start)
 
-        print('Fitness value:', fitness_value)
+          print('Fitness value:', fitness_value)
 
-        response = {'status': 'received standalone audio', 'fitness': fitness_value}
+          response = {'status': 'received standalone audio', 'fitness': fitness_value}
+          await websocket.send(json.dumps(response))
+    except Exception as e:
+        print('quality_problems: Exception:', e)
+        response = {'status': 'ERROR', 'message': str(e)}
         await websocket.send(json.dumps(response))
 
 # Parse command line arguments

@@ -16,25 +16,30 @@ from measurements.diversity.audio_features import get_mfcc_feature_means_stdv_fi
 from util import filepath_to_port
 
 async def socket_server(websocket, path):
-    # Wait for the first message and determine its type
-    message = await websocket.recv()
+    try:
+        # Wait for the first message and determine its type
+        message = await websocket.recv()
 
-    if isinstance(message, bytes):
-        start = time.time()
-        # Received binary message (assume it's an audio buffer)
-        audio_data = message
-        print('Audio data received for feature extraction')
-        # convert the audio data to a numpy array
-        audio_data = np.frombuffer(audio_data, dtype=np.float32)
-        # Process the audio data...
-        features = get_mfcc_feature_means_stdv_firstorderdifference_concatenated(audio_data, sample_rate)
-        # print('MFCC features extracted:', features)
+        if isinstance(message, bytes):
+            start = time.time()
+            # Received binary message (assume it's an audio buffer)
+            audio_data = message
+            print('Audio data received for feature extraction')
+            # convert the audio data to a numpy array
+            audio_data = np.frombuffer(audio_data, dtype=np.float32)
+            # Process the audio data...
+            features = get_mfcc_feature_means_stdv_firstorderdifference_concatenated(audio_data, sample_rate)
+            # print('MFCC features extracted:', features)
 
-        end = time.time()
-        print('features_mfcc: Time taken to extract features:', end - start)
+            end = time.time()
+            print('features_mfcc: Time taken to extract features:', end - start)
 
-        response = {'status': 'received standalone audio', 'features': features.tolist()}
-        # response = {'status': 'received standalone audio'}
+            response = {'status': 'received standalone audio', 'features': features.tolist()}
+            # response = {'status': 'received standalone audio'}
+            await websocket.send(json.dumps(response))
+    except Exception as e:
+        print('features_mfcc: Exception:', e)
+        response = {'status': 'ERROR', 'message': str(e)}
         await websocket.send(json.dumps(response))
 
 # Parse command line arguments

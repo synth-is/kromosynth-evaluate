@@ -40,16 +40,13 @@ def remove_duplicates_keep_highest(discretised_projection, fitness_values):
     return unique_projection, unique_fitness_values, indices_to_keep_sorted
 
 async def socket_server(websocket, path):
-    data = await websocket.recv()
-
     # start time
     start = time.time()
-
-    jsonData = json.loads(data)  # receive JSON
-
-    # print('JSON data received: ', jsonData)
-
     try:
+        data = await websocket.recv()
+
+        jsonData = json.loads(data)  # receive JSON
+
         feature_vectors = jsonData['feature_vectors']
         should_fit = jsonData['should_fit'] 
         print('should_fit: ', should_fit)
@@ -70,6 +67,10 @@ async def socket_server(websocket, path):
             discretised_vector = vector_to_index(element, cell_range_min, cell_range_max, cells, dimensions)
             print('discretised_vector', discretised_vector)
             discretised_projection.append(discretised_vector)
+
+        response = {'status': 'OK', 'feature_map': discretised_projection}
+        await websocket.send(json.dumps(response))
+        
     except ValueError as e:
         print('Error: ', str(e))
         response = {'status': 'ERROR', 'message': str(e)}
@@ -90,8 +91,6 @@ async def socket_server(websocket, path):
 
     # Send a JSON response back to the client
     # response = {'status': 'OK', 'feature_map': unique_projection, 'fitness_values': unique_fitness_values, 'indices_to_keep': indices_to_keep}
-    response = {'status': 'OK', 'feature_map': discretised_projection}
-    await websocket.send(json.dumps(response))
 
 # Parse command line arguments
 parser = argparse.ArgumentParser(description='Run a WebSocket server.')
