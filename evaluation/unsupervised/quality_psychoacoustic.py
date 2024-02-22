@@ -66,9 +66,9 @@ async def socket_server(websocket, path):
 
           response = {'status': 'received standalone audio', 'fitness': fitness_value}
           await websocket.send(json.dumps(response))
-    except Exception as e:
-        print('quality_psychoacoustic: Exception:', e)
-        response = {'status': 'ERROR', 'message': str(e)}
+    except:
+        print('quality_psychoacoustic error')
+        response = {'status': 'ERROR'}
         await websocket.send(json.dumps(response))
 
 # Parse command line arguments
@@ -117,7 +117,12 @@ print('Starting fitness / sound quality (psychoacoustic) WebSocket server at ws:
 start_server = websockets.serve(socket_server, 
                                 HOST, 
                                 PORT,
-                                max_size=MAX_MESSAGE_SIZE)
+                                max_size=MAX_MESSAGE_SIZE,
+                                ping_timeout=None,
+                                ping_interval=None)
+# ping_timeout=None, ping_interval=None:
+# https://websockets.readthedocs.io/en/stable/reference/asyncio/common.html#websockets.legacy.protocol.WebSocketCommonProtocol
+# https://websockets.readthedocs.io/en/stable/faq/common.html
 
 asyncio.get_event_loop().run_until_complete(start_server)
 asyncio.get_event_loop().run_forever()

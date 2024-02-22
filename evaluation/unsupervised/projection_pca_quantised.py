@@ -71,9 +71,9 @@ async def socket_server(websocket, path):
         response = {'status': 'OK', 'feature_map': discretised_projection}
         await websocket.send(json.dumps(response))
         
-    except ValueError as e:
-        print('Error: ', str(e))
-        response = {'status': 'ERROR', 'message': str(e)}
+    except:
+        print('Error in projection_pca_quantised.py')
+        response = {'status': 'ERROR'}
         await websocket.send(json.dumps(response))
         return
 
@@ -134,7 +134,9 @@ print('Starting projection WebSocket server at ws://{}:{}'.format(HOST, PORT))
 start_server = websockets.serve(socket_server, 
                                 HOST, 
                                 PORT,
-                                max_size=MAX_MESSAGE_SIZE)
+                                max_size=MAX_MESSAGE_SIZE,
+                                ping_timeout=None,
+                                ping_interval=None)
 
 asyncio.get_event_loop().run_until_complete(start_server)
 asyncio.get_event_loop().run_forever()

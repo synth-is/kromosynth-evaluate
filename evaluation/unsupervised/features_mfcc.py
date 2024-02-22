@@ -37,9 +37,9 @@ async def socket_server(websocket, path):
             response = {'status': 'received standalone audio', 'features': features.tolist()}
             # response = {'status': 'received standalone audio'}
             await websocket.send(json.dumps(response))
-    except Exception as e:
-        print('features_mfcc: Exception:', e)
-        response = {'status': 'ERROR', 'message': str(e)}
+    except:
+        print('features_mfcc: Exception')
+        response = {'status': 'ERROR'}
         await websocket.send(json.dumps(response))
 
 # Parse command line arguments
@@ -88,7 +88,9 @@ print('Starting features WebSocket server at ws://{}:{}'.format(HOST, PORT))
 start_server = websockets.serve(socket_server, 
                                 HOST, 
                                 PORT,
-                                max_size=MAX_MESSAGE_SIZE)
+                                max_size=MAX_MESSAGE_SIZE,
+                                ping_timeout=None,
+                                ping_interval=None)
 
 asyncio.get_event_loop().run_until_complete(start_server)
 asyncio.get_event_loop().run_forever()
