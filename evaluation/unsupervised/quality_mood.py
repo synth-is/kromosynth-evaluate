@@ -60,9 +60,9 @@ async def socket_server(websocket, path):
 
           response = {'status': 'received standalone audio', 'fitness': fitness_value}
           await websocket.send(json.dumps(response))
-    except Exception as e:
-        print('quality_mood: Exception:', e)
-        response = {'status': 'ERROR', 'message': str(e)}
+    except:
+        print('quality_mood: Exception')
+        response = {'status': 'ERROR'}
         await websocket.send(json.dumps(response))
 
 # Parse command line arguments
@@ -107,11 +107,16 @@ if args.host_info_file:
     with open(args.host_info_file, 'w') as f:
         f.write('{}:{}'.format(HOST, PORT))
 
+MAX_MESSAGE_SIZE = 100 * 1024 * 1024  # 100MB
+
 print('Starting fitness / sound quality (mood) WebSocket server at ws://{}:{}'.format(HOST, PORT))
 # Start the WebSocket server with supplied command line arguments
 start_server = websockets.serve(socket_server, 
                                 HOST, 
-                                PORT)
+                                PORT,
+                                max_size=MAX_MESSAGE_SIZE,
+                                ping_timeout=None,
+                                ping_interval=None)
 
 asyncio.get_event_loop().run_until_complete(start_server)
 asyncio.get_event_loop().run_forever()
