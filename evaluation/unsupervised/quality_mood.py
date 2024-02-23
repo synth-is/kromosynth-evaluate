@@ -80,6 +80,7 @@ args = parser.parse_args()
 sample_rate = args.sample_rate
 
 # parse the comma separted list of quality methods
+print("args.quality_methods", args.quality_methods)
 QUALITY_METHODS = args.quality_methods.split(',')
 
 MODELS_PATH = args.models_path
