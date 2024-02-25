@@ -13,7 +13,7 @@ import time
 # import the function get_mfcc_feature_means_stdv_firstorderdifference_concatenated from measurements/diversity/mfcc.py
 import sys
 sys.path.append('../..')
-from measurements.quality.quality_instrumentation import nsynth_instrument_mean
+from measurements.quality.quality_instrumentation import nsynth_instrument_mean, nsynth_instrument_topscore_and_index_and_class
 from util import filepath_to_port
 
 async def socket_server(websocket, path):
@@ -25,25 +25,25 @@ async def socket_server(websocket, path):
           start = time.time()
           # Received binary message (assume it's an audio buffer)
           audio_data = message
-          print('Audio data received for fitness evaluation, by sound quality (SQ) metrics')
+          print('Audio data received for fitness evaluation, by instrumentation metrics')
           # convert the audio data to a numpy array
           audio_data = np.frombuffer(audio_data, dtype=np.float32)
           
           fitness_percentages = []
           for method in QUALITY_METHODS:
             if method == 'nsynth_instrument':
-              fitness_percentages.append(nsynth_instrument_mean(audio_data, MODELS_PATH))
-
-          # lower value, the better
-          # fitness_value = sum(fitness_percentages) / len(fitness_percentages)
-          fitness_value = fitness_percentages[0]
+              fitness_result = nsynth_instrument_mean(audio_data, MODELS_PATH)
+              fitness_value = fitness_result.item()
+            elif method == 'nsynth_instrument_topscore':
+              fitness_result = nsynth_instrument_topscore_and_index_and_class(audio_data, MODELS_PATH)
+              fitness_value = { 'top_score': fitness_result[0].item(), 'index': fitness_result[1].item(), 'top_score_class': fitness_result[2]}
 
           print('Fitness value (instrumentation):', fitness_value)
 
           end = time.time()
           print('nsynth_instrument: Time taken to evaluate fitness:', end - start)
 
-          response = {'status': 'received standalone audio', 'fitness': json.dumps(fitness_value.item())} # https://stackoverflow.com/questions/53082708/typeerror-object-of-type-float32-is-not-json-serializable#comment93577758_53082860
+          response = {'status': 'received standalone audio', 'fitness': fitness_value} # https://stackoverflow.com/questions/53082708/typeerror-object-of-type-float32-is-not-json-serializable#comment93577758_53082860
           await websocket.send(json.dumps(response))
     except Exception as e:
         print('nsynth_instrument: Exception', e)
