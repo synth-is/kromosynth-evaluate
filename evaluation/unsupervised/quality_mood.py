@@ -13,7 +13,10 @@ import time
 # import the function get_mfcc_feature_means_stdv_firstorderdifference_concatenated from measurements/diversity/mfcc.py
 import sys
 sys.path.append('../..')
-from measurements.quality.quality_mood import mood_aggressive, mood_happy, mood_non_happy, mood_party, mood_relaxed, mood_sad, mood_acoustic, mood_electronic
+from measurements.quality.quality_mood import (
+  mood_aggressive, mood_happy, mood_non_happy, mood_party, mood_relaxed, mood_sad, mood_acoustic, mood_electronic,
+  get_top_mood
+)
 from util import filepath_to_port
 
 async def socket_server(websocket, path):
@@ -47,11 +50,16 @@ async def socket_server(websocket, path):
               fitness_percentages.append(mood_acoustic(audio_data, MODELS_PATH))
             elif method == 'mood_electronic':
               fitness_percentages.append(mood_electronic(audio_data, MODELS_PATH))
+            elif method == 'top_mood':
+               fitness_result = get_top_mood(audio_data, MODELS_PATH)
+               fitness_value = { 'top_score_class': fitness_result[0], 'top_score': fitness_result[1]}
 
-          print('sound quality percentages (mood):', fitness_percentages)
+          # print('sound quality percentages (mood):', fitness_percentages)
 
-          # lower value, the better
-          fitness_value = sum(fitness_percentages) / len(fitness_percentages)
+          if fitness_percentages:
+            # calculate the average of the fitness percentages
+            # lower value, the better
+            fitness_value = sum(fitness_percentages) / len(fitness_percentages)
 
           print('Fitness value (SQ):', fitness_value)
 

@@ -59,3 +59,26 @@ def mood_electronic(audio_data, models_path):
   # get the first column of the predictions, averaged to a single value
   mood_electronic_averaged = sum(predictions[:,0]) / len(predictions[:,0])
   return mood_electronic_averaged
+
+def get_top_mood(audio_data, models_path):
+  mood_aggressive_averaged = mood_aggressive(audio_data, models_path)
+  mood_happy_averaged = mood_happy(audio_data, models_path)
+  mood_non_happy_averaged = mood_non_happy(audio_data, models_path)
+  mood_party_averaged = mood_party(audio_data, models_path)
+  mood_relaxed_averaged = mood_relaxed(audio_data, models_path)
+  mood_sad_averaged = mood_sad(audio_data, models_path)
+  mood_acoustic_averaged = mood_acoustic(audio_data, models_path)
+  mood_electronic_averaged = mood_electronic(audio_data, models_path)
+  mood_values = {
+    "aggressive": mood_aggressive_averaged,
+    "happy": mood_happy_averaged,
+    "non_happy": mood_non_happy_averaged,
+    "party": mood_party_averaged,
+    "relaxed": mood_relaxed_averaged,
+    "sad": mood_sad_averaged,
+    "acoustic": mood_acoustic_averaged,
+    "electronic": mood_electronic_averaged
+  }
+  # print('mood_values', mood_values)
+  top_mood = max(mood_values, key=mood_values.get)
+  return top_mood, mood_values[top_mood]
