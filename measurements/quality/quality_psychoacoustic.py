@@ -3,6 +3,7 @@
 
 from mosqito.sq_metrics import roughness_dw, loudness_zwtv, equal_loudness_contours, sharpness_din_tv
 import numpy as np
+from measurements.quality.util import normalize_and_clamp
 
 def roughness_dw_score_average(audio_data, sample_rate):
   r, r_spec, bark, time = roughness_dw(audio_data, sample_rate, overlap=0)
@@ -86,9 +87,3 @@ def roughness_score_scaled_by_loudness(audio_data, sample_rate):
   normalized_loudness = normalize_and_clamp(loudness, 60)
   scaled_normalized_roughness_inverted = normalized_roughness_inverted * normalized_loudness
   return scaled_normalized_roughness_inverted
-
-def normalize_and_clamp(value, cap_value):
-    if value > cap_value:
-        value = cap_value
-    normalized_value = value / cap_value
-    return normalized_value

@@ -13,7 +13,10 @@ import time
 # import the function get_mfcc_feature_means_stdv_firstorderdifference_concatenated from measurements/diversity/mfcc.py
 import sys
 sys.path.append('../..')
-from measurements.quality.quality_control import click_count_percentage, discontinuity_count_percentage, gaps_count_percentage, hum_precence_percentage, saturation_percentage, signal_to_noise_percentage_of_excellence, true_peak_clipping_percentage, noise_burst_percentage, compressibility_percentage
+from measurements.quality.quality_control import (
+  click_count_percentage, discontinuity_count_percentage, gaps_count_percentage, hum_precence_percentage, saturation_percentage, signal_to_noise_percentage_of_excellence, true_peak_clipping_percentage, noise_burst_percentage, compressibility_percentage,
+  energy
+)
 from util import filepath_to_port
 
 async def socket_server(websocket, path):
@@ -54,6 +57,12 @@ async def socket_server(websocket, path):
 
           # lower value, the better
           fitness_value = sum(fitness_percentages) / len(fitness_percentages)
+
+          # if quality_methods contains 'energy', calculate the energy value and use it to scale the fitness value
+          if 'energy' in quality_methods:
+            energy_value = energy(audio_data)
+            print('Energy value:', energy_value)
+            fitness_value = fitness_value * energy_value
 
           end = time.time()
           print('quality_problems: Time taken to evaluate fitness:', end - start)

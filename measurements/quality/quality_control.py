@@ -2,9 +2,20 @@
 # - https://www.aes.org/e-lib/browse.cfm?elib=20338
 # - https://essentia.upf.edu/python_examples.html#audio-problems
 
-from essentia.standard import FrameGenerator, ClickDetector, DiscontinuityDetector, GapsDetector, HumDetector, SaturationDetector, SNR, TruePeakDetector, NoiseBurstDetector
+from essentia.standard import (
+   FrameGenerator, ClickDetector, DiscontinuityDetector, GapsDetector, HumDetector, SaturationDetector, SNR, TruePeakDetector, NoiseBurstDetector,
+   Energy
+)
+from measurements.quality.util import normalize_and_clamp
 import numpy as np
 import zlib
+
+def energy(audio_data):
+  # energy is 80000.0 with a square wave
+  energy = Energy()(audio_data)
+  energy_normalized = normalize_and_clamp(energy, 80000.0)
+  # print(f'energy_normalized: {energy_normalized}')
+  return energy_normalized
 
 def click_count_percentage(audio_data, sample_rate):
   # TODO: configure those via parameters?
