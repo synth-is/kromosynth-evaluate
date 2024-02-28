@@ -67,3 +67,28 @@ def equal_loudness_contour_score_95th_percentile(audio_data, sample_rate):
   equal_loudness_contour_single_value = np.percentile(e, 95)
   print('Equal loudness contour single value:', equal_loudness_contour_single_value)
   return equal_loudness_contour_single_value
+
+
+def roughness_score_scaled_by_loudness(audio_data, sample_rate):
+  # roughness_as_fitness = 1 - roughness_dw_score_median(audio_data, sample_rate)
+  roughness_as_fitness = roughness_dw_score_median(audio_data, sample_rate)
+  loudness = loudness_zwicker_score_median(audio_data, sample_rate)
+  # loudness tests with basic waveforms:
+  # - noise: 63.32996565395672
+  # - sine with spikes and gaps introduced: 60.614880764488674
+  # - sine: 0.000018955168317635763
+  # - square: 17.64618456889107
+  # - triangle: 2.2768148633335596
+  # - sawtooth: 23.315303222594302
+  # highest observed roughness: ~ 6, e.g. with a square wave
+  normalized_roughness = normalize_and_clamp(roughness_as_fitness, 6)
+  normalized_roughness_inverted = 1 - normalized_roughness
+  normalized_loudness = normalize_and_clamp(loudness, 60)
+  scaled_normalized_roughness_inverted = normalized_roughness_inverted * normalized_loudness
+  return scaled_normalized_roughness_inverted
+
+def normalize_and_clamp(value, cap_value):
+    if value > cap_value:
+        value = cap_value
+    normalized_value = value / cap_value
+    return normalized_value

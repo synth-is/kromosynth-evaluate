@@ -16,7 +16,8 @@ sys.path.append('../..')
 from measurements.quality.quality_psychoacoustic import (
   roughness_dw_score_average, roughness_dw_score_median, roughness_dw_score_95th_percentile,
   loudness_zwicker_score_average, loudness_zwicker_score_median, loudness_zwicker_score_95th_percentile,
-  equal_loudness_contour_score_average, equal_loudness_contour_score_median, equal_loudness_contour_score_95th_percentile
+  equal_loudness_contour_score_average, equal_loudness_contour_score_median, equal_loudness_contour_score_95th_percentile,
+  roughness_score_scaled_by_loudness
 )
 from util import filepath_to_port
 
@@ -53,6 +54,11 @@ async def socket_server(websocket, path):
               fitness_percentages.append(equal_loudness_contour_score_median(audio_data, sample_rate))
             elif method == 'equal_loudness_contour_95th_percentile':
               fitness_percentages.append(equal_loudness_contour_score_95th_percentile(audio_data, sample_rate))
+            # TODO:
+            # elif method == 'sharpness_din_tv':
+            #   fitness_percentages.append(sharpness_din_tv_score(audio_data, sample_rate))
+            elif method == 'roughness_score_scaled_by_loudness':
+              fitness_percentages.append(roughness_score_scaled_by_loudness(audio_data, sample_rate))
 
           print('sound quality percentages (psychoacoustic):', fitness_percentages)
 
