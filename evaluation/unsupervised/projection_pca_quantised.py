@@ -39,6 +39,11 @@ def remove_duplicates_keep_highest(discretised_projection, fitness_values):
 
     return unique_projection, unique_fitness_values, indices_to_keep_sorted
 
+# TODO: endpoints:
+# - /pca
+# - /two-features
+# - /umap
+
 async def socket_server(websocket, path):
     # start time
     start = time.time()
