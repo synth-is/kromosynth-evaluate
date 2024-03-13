@@ -56,7 +56,7 @@ async def socket_server(websocket, path):
         should_fit = jsonData['should_fit'] 
         print('should_fit: ', should_fit)
         evorun_dir = jsonData['evorun_dir']
-        projection = get_pca_projection(feature_vectors, dimensions, should_fit, evorun_dir)
+        projection = get_pca_projection(feature_vectors, dimensions, should_fit, evorun_dir, plot_variance_ratio)
 
         print('projection', projection)
 
@@ -76,8 +76,8 @@ async def socket_server(websocket, path):
         response = {'status': 'OK', 'feature_map': discretised_projection}
         await websocket.send(json.dumps(response))
         
-    except:
-        print('Error in projection_pca_quantised.py')
+    except Exception as e:
+        print('Error in projection_pca_quantised.py:', e)
         response = {'status': 'ERROR'}
         await websocket.send(json.dumps(response))
         return
@@ -106,9 +106,11 @@ parser.add_argument('--dimensions', type=int, default=2, help='Number of dimensi
 parser.add_argument('--dimension-cells', type=int, default=10, help='Number of cells in each dimension.')
 parser.add_argument('--process-title', type=str, default='projection_pca_quantised', help='Process title to use.')
 parser.add_argument('--host-info-file', type=str, default='', help='Host information file to use.')
+parser.add_argument('--plot-variance-ratio', type=bool, default=False, help='Plot the variance ratio of the PCA model.')
 args = parser.parse_args()
 
 dimensions = args.dimensions
+plot_variance_ratio = args.plot_variance_ratio
 
 # set PROCESS_TITLE as either the environment variable or the default value
 PROCESS_TITLE = os.environ.get('PROCESS_TITLE', args.process_title)

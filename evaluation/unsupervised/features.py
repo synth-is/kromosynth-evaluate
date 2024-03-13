@@ -90,7 +90,7 @@ parser.add_argument('--host', type=str, default='localhost', help='Host to run t
 parser.add_argument('--force-host', type=bool, default=False, help='Force the host to be the one specified in the host argument.') # e.g for the ROBIN-HPC
 parser.add_argument('--port', type=int, default=8080, help='Port number to run the WebSocket server on.')
 # parser.add_argument('--sample-rate', type=int, default=16000, help='Sample rate of the audio data.')
-parser.add_argument('--process-title', type=str, default='features_mfcc', help='Process title to use.')
+parser.add_argument('--process-title', type=str, default='features', help='Process title to use.')
 parser.add_argument('--host-info-file', type=str, default='', help='Host information file to use.')
 args = parser.parse_args()
 

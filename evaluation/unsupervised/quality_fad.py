@@ -30,6 +30,9 @@ sys.path.append('../..')
 from measurements.quality.quality_fad import get_fad_score
 from util import filepath_to_port
 
+def str_to_bool(s):
+    return s.lower() in ['true', '1', 't', 'y', 'yes']
+
 async def socket_server(websocket, path):
     # Parse the path and query components from the URL
     url_components = urlparse(path)
@@ -42,21 +45,35 @@ async def socket_server(websocket, path):
         start = time.time()
 
         if request_path == '/score':
-            print("Calculating FAD score for embedding (potentially combined with population embeddings)")
+            
+            # test for unconstrained evolution (no pressure) - TODO: might want this as a separate endpoint, for comparison:
+            # time_as_score = time.time()
+            # response = {'status': 'received standalone audio', 'fitness': time_as_score}
+            # await websocket.send(json.dumps(response))
+
+            measure_collective_performance = str_to_bool(query_params.get('measure_collective_performance', ['false'])[0])
+            print(f"Calculating FAD score for embedding {'(combined with population embeddings)' if measure_collective_performance else ''}")
             embedding = json.loads(message)  # receive JSON
             background_embds_path = query_params.get('background_embds_path', [None])[0]
             eval_embds_path = query_params.get('eval_embds_path', [None])[0]
-            measure_collective_performance = query_params.get('measure_collective_performance', [False])[0]
             ckpt_dir = query_params.get('ckpt_dir', [None])[0]
 
-            embeddings = []
-            if measure_collective_performance:
-                population_embds = np.load(eval_embds_path)
+            embeddingsList = []
+            if measure_collective_performance and eval_embds_path is not None and os.path.exists(eval_embds_path):
+                print(f"Will measure collective performance using embeddings from {eval_embds_path}")
                 # population_embeds is a dictionary, with keys being the genome IDs and values being the embeddings
-                for genome_id, embedding in population_embds.items():
-                    embeddings.append(embedding)
-                # embeddings = list(population_embds.values())
-            embeddings.append(embedding)
+                population_embds_dict = np.load(eval_embds_path, allow_pickle=True).item()
+                population_embds = list(population_embds_dict.values())
+                for one_population_embedding in population_embds:
+                    embeddingsList.append(one_population_embedding)
+            else:
+                print("Will only measure performance for the single audio candiate embedding")
+            
+            embeddingsList.append(embedding)
+
+            embeddings = np.concatenate(embeddingsList, axis=0)
+
+            print(f"embeddings shape: {np.array(embeddings).shape}")
 
             score = get_fad_score(embeddings, background_embds_path, ckpt_dir)
 
@@ -65,16 +82,18 @@ async def socket_server(websocket, path):
 
         elif request_path == '/add-to-query-embeddings':
             print("Adding embedding to query embeddings")
-            json_data = json.loads(message)  # receive JSON
-            embedding = json_data['embedding']
-            candidate_id = json_data['candidate_id']
-            replacement_id = json_data.get('replacement_id', None)
+            embedding = json.loads(message)
+            candidate_id = query_params.get('candidate_id', [None])[0]
+            replacement_id = query_params.get('replacement_id', [None])[0]
             eval_embds_path = query_params.get('eval_embds_path', [None])[0]
-            population_embds = np.load(eval_embds_path)
-            population_embds[candidate_id] = embedding
+            if eval_embds_path is not None and os.path.exists(eval_embds_path):
+                population_embds = np.load(eval_embds_path, allow_pickle=True).item()
+                population_embds[candidate_id] = embedding
+            else:
+                population_embds = {candidate_id: embedding}
             if replacement_id:
                 del population_embds[replacement_id]
-            np.save(eval_embds_path, population_embds)
+            np.save(eval_embds_path, population_embds, allow_pickle=True)
 
             response = {'status': 'OK'}
             await websocket.send(json.dumps(response))
@@ -84,7 +103,7 @@ async def socket_server(websocket, path):
         print('Time taken to evaluate fitness (FAD):', end - start)
 
     except Exception as e:
-        print('features: Exception', e)
+        print('quality: Exception', e)
         response = {'status': 'ERROR'}
         await websocket.send(json.dumps(response))
 
@@ -93,7 +112,7 @@ parser = argparse.ArgumentParser(description='Run a WebSocket server.')
 parser.add_argument('--host', type=str, default='localhost', help='Host to run the WebSocket server on.')
 parser.add_argument('--force-host', type=bool, default=False, help='Force the host to be the one specified in the host argument.') # e.g for the ROBIN-HPC
 parser.add_argument('--port', type=int, default=8080, help='Port number to run the WebSocket server on.')
-parser.add_argument('--process-title', type=str, default='features_mfcc', help='Process title to use.')
+parser.add_argument('--process-title', type=str, default='quality_fad', help='Process title to use.')
 parser.add_argument('--host-info-file', type=str, default='', help='Host information file to use.')
 args = parser.parse_args()
 
