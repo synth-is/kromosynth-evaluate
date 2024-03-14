@@ -45,3 +45,4 @@ typing_extensions==4.9.0
 urllib3==2.1.0
 websockets==12.0
 zipp==3.17.0
+frechet_audio_distance @ git+https://github.com/synth-is/kromosynth-frechet-audio-distance.git
