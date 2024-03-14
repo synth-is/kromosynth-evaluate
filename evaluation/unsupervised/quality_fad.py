@@ -27,7 +27,7 @@ from urllib.parse import urlparse, parse_qs
 # import the function get_mfcc_feature_means_stdv_firstorderdifference_concatenated from measurements/diversity/mfcc.py
 import sys
 sys.path.append('../..')
-from measurements.quality.quality_fad import get_fad_score
+from measurements.quality.quality_fad import get_fad_score, get_eucid_distance
 from util import filepath_to_port
 
 def str_to_bool(s):
@@ -77,6 +77,8 @@ async def socket_server(websocket, path):
 
             score = get_fad_score(embeddings, background_embds_path, ckpt_dir)
 
+            # score_euclidean = get_eucid_distance(embedding, background_embds_path)
+
             response = {'status': 'received standalone audio', 'fitness': score}
             await websocket.send(json.dumps(response))
 
@@ -91,7 +93,7 @@ async def socket_server(websocket, path):
                 population_embds[candidate_id] = embedding
             else:
                 population_embds = {candidate_id: embedding}
-            if replacement_id:
+            if replacement_id is not None and replacement_id in population_embds:
                 del population_embds[replacement_id]
             np.save(eval_embds_path, population_embds, allow_pickle=True)
 

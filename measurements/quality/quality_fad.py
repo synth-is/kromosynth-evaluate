@@ -1,11 +1,14 @@
 from frechet_audio_distance import FrechetAudioDistance
 import numpy as np
 import time
+from scipy.spatial import distance
 
 # singleton frechet instance
 frechet = None
 
 maximum_distance = 0.0
+
+maximum_euclidean_distance = 0.0
 
 def get_fad_score(embeddings, background_embds_path, ckpt_dir):
     global frechet
@@ -41,6 +44,38 @@ def get_fad_score(embeddings, background_embds_path, ckpt_dir):
 
     print('rescaled FAD score:', score)
 
+    return score
+
+# TODO: test further and maybe move into another module
+def get_eucid_distance(embeddings, background_embds_path):
+    global maximum_euclidean_distance
+    # take the mean of the embeddings
+    mean_embedding = np.mean(embeddings, axis=0)
+    # print the mean embedding shape
+    print('--- get_eucid_distance mean_embedding.shape', mean_embedding.shape)
+    # load the background embeddings
+    background_embeddings = np.load(background_embds_path)
+    print('background_embeddings.shape', background_embeddings.shape)
+    
+    # for each background embedding, take the mean
+    # TODO currently all frames from all sounds are a single sequence of vectors, as stored in the .npy files prepared by frechet-audio-distance, 
+    # which is not suitable for the Euclidean calculation (right?), where we would rather like to take the mean of the frames for one sound at a time
+    background_mean_embeddings = np.mean(background_embeddings, axis=0)
+    
+    print('--- get_eucid_distance background_mean_embeddings.shape', background_mean_embeddings.shape)
+    # calculate the distance between the mean embedding and each background mean embeddings
+    distances = distance.cdist([mean_embedding], [background_mean_embeddings], 'euclidean')
+    print('--- get_eucid_distance distances.shape', distances.shape)
+    print('--- get_eucid_distance distances', distances)
+    # take the minimum distance
+    min_distance = np.min(distances)
+    if min_distance > maximum_euclidean_distance:
+        maximum_euclidean_distance = min_distance
+        print(f"--------- New maximum euclidean distance: {maximum_euclidean_distance}")
+    print('get_eucid_distance min_distance', min_distance)
+    # invert the distance, so that higher scores are better
+    score = 1 / min_distance
+    print('--- get_eucid_distance score', score)
     return score
 
 

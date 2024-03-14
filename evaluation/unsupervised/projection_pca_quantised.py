@@ -56,7 +56,13 @@ async def socket_server(websocket, path):
         should_fit = jsonData['should_fit'] 
         print('should_fit: ', should_fit)
         evorun_dir = jsonData['evorun_dir']
-        projection = get_pca_projection(feature_vectors, dimensions, should_fit, evorun_dir, plot_variance_ratio)
+        pca_components = jsonData['pca_components']
+        # parse the comma separated string of dimensions into a list of integers, if it is not empty
+        if pca_components:
+            components_list = list(map(int, pca_components.split(',')))
+        else:
+            components_list = []
+        projection = get_pca_projection(feature_vectors, dimensions, should_fit, evorun_dir, plot_variance_ratio, components_list)
 
         print('projection', projection)
 

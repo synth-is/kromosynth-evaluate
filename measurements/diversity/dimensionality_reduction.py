@@ -23,13 +23,16 @@ def plot_expected_variance_ratio(pca):
 
 pca = None
 scaler = None
-def get_pca_projection(features, n_components=2, should_fit=True, evorun_dir='', plot_variance_ratio=False):
+def get_pca_projection(features, n_components=2, should_fit=True, evorun_dir='', plot_variance_ratio=False, components_list=[]):
     global pca
     global scaler
     if should_fit:
         print('Fitting PCA model...')
-        pca = PCA(n_components=n_components)
-        # pca = PCA(n_components=14)
+        # if components_list has been set, use the default PCA constructor, which will use all components, and then use the components_list to select the components
+        if len(components_list) > 0:
+            pca = PCA()
+        else: # otherwise use n_components
+            pca = PCA(n_components=n_components)
         pca.fit(features)
         pkl.dump(pca, open(evorun_dir + 'pca_model.pkl', 'wb'))
     else:
@@ -55,7 +58,13 @@ def get_pca_projection(features, n_components=2, should_fit=True, evorun_dir='',
             # assume that the scaler has been saved to disk - TODO: throw an error if it hasn't?
             scaler = pkl.load(open(evorun_dir + 'scaler.pkl', 'rb'))
 
-    return scaler.transform(transformed)
+    scaled = scaler.transform(transformed)
+
+    # pick the components indexto to in components_list
+    if len(components_list) > 0:
+        scaled = scaled[:, components_list]
+
+    return scaled
 
 
 # TODO autoencoder, t-SNE, UMAP
