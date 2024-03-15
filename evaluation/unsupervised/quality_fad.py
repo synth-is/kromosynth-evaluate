@@ -76,6 +76,9 @@ async def socket_server(websocket, path):
             print(f"embeddings shape: {np.array(embeddings).shape}")
 
             score = get_fad_score(embeddings, background_embds_path, ckpt_dir)
+            # the above score is apparently longdouble, and serialising it via JSON is fine on macOS (M1)
+            # but errors out in a Linux environment (e.g. Fox HPC), and the following conversion solves that issue:
+            score = np.float64(score)
 
             # score_euclidean = get_eucid_distance(embedding, background_embds_path)
 
@@ -106,7 +109,7 @@ async def socket_server(websocket, path):
 
     except Exception as e:
         print('quality: Exception', e)
-        response = {'status': 'ERROR'}
+        response = {'status': 'ERROR', 'error': e }
         await websocket.send(json.dumps(response))
 
 # Parse command line arguments
@@ -148,7 +151,7 @@ if args.host_info_file:
 
 MAX_MESSAGE_SIZE = 100 * 1024 * 1024  # 100MB
 
-print('Starting features WebSocket server at ws://{}:{}'.format(HOST, PORT))
+print('Starting quality (FAD) WebSocket server at ws://{}:{}'.format(HOST, PORT))
 
 # Start the WebSocket server with supplied command line arguments
 start_server = websockets.serve(socket_server, 
