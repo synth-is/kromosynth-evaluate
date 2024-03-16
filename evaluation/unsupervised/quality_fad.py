@@ -109,7 +109,7 @@ async def socket_server(websocket, path):
 
     except Exception as e:
         print('quality: Exception', e)
-        response = {'status': 'ERROR', 'error': e }
+        response = {'status': 'ERROR', 'error': str(e) }
         await websocket.send(json.dumps(response))
 
 # Parse command line arguments
