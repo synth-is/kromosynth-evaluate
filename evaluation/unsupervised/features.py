@@ -41,6 +41,7 @@ async def socket_server(websocket, path):
             if request_path == '/mfcc' or request_path == '/':
                 print('Extracting MFCC features...')
                 embeddings = get_mfcc_features(audio_data, sample_rate)
+                features = get_feature_means_stdv_firstorderdifference_concatenated(embeddings)
             else:
                 ckpt_dir = query_params.get('ckpt_dir', [None])[0]
                 audio_data = [audio_data]
@@ -79,9 +80,14 @@ async def socket_server(websocket, path):
 
             response = {'status': 'received standalone audio', 'features': features.tolist(), 'embedding': embeddings.tolist()}
             await websocket.send(json.dumps(response))
+            await asyncio.sleep(30)
+    except websockets.ConnectionClosed as e:
+        print('features: ConnectionClosed', e)
+        response = {'status': 'ERROR' + str(e)}
+        await websocket.send(json.dumps(response))
     except Exception as e:
         print('features: Exception', e)
-        response = {'status': 'ERROR'}
+        response = {'status': 'ERROR' + str(e)}
         await websocket.send(json.dumps(response))
 
 # Parse command line arguments
