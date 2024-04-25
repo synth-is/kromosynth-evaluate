@@ -56,9 +56,9 @@ async def socket_server(websocket, path):
         should_fit = jsonData['should_fit'] 
         print('should_fit: ', should_fit)
         evorun_dir = jsonData['evorun_dir']
-        pca_components = jsonData['pca_components']
+        pca_components = jsonData.get('pca_components')
         # parse the comma separated string of dimensions into a list of integers, if it is not empty
-        if pca_components:
+        if pca_components is not None and pca_components != '':
             components_list = list(map(int, pca_components.split(',')))
         else:
             components_list = []
@@ -84,7 +84,7 @@ async def socket_server(websocket, path):
         
     except Exception as e:
         print('Error in projection_pca_quantised.py:', e)
-        response = {'status': 'ERROR'}
+        response = {'status': 'ERROR' + str(e)}
         await websocket.send(json.dumps(response))
         return
 
