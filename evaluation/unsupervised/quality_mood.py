@@ -58,7 +58,6 @@ async def socket_server(websocket, path):
 
           if fitness_percentages:
             # calculate the average of the fitness percentages
-            # lower value, the better
             fitness_value = sum(fitness_percentages) / len(fitness_percentages)
 
           print('Fitness value (SQ):', fitness_value)

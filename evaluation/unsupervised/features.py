@@ -15,7 +15,10 @@ import sys
 sys.path.append('../..')
 from measurements.diversity.audio_features import (
     get_feature_means_stdv_firstorderdifference_concatenated,
-    get_mfcc_features, get_vggish_embeddings, get_pann_embeddings, get_clap_embeddings, get_encodec_embeddings
+    get_mfcc_features, get_vggish_embeddings, get_pann_embeddings, get_clap_embeddings, get_encodec_embeddings,
+    get_spectral_centroid_mean_stdv, get_spectral_rolloff_mean_stdv, get_zero_crossing_rate_mean_stdv, get_tempo,
+    get_chroma_stft_mean_stdv, get_mel_spectrogram_mean_stdv, get_rms_mean_stdv, get_spectral_bandwidth_mean_stdv,
+    get_spectral_contrast_mean_stdv, get_spectral_flatness_mean_stdv, get_spectral_flux_mean_stdv, get_spectral_rolloff_mean_stdv
 )
 from util import filepath_to_port
 
@@ -65,19 +68,83 @@ async def socket_server(websocket, path):
                     print('Extracting EnCodec embeddings...')
                     embeddings = get_encodec_embeddings(audio_data, sample_rate, ckpt_dir)
                     features = get_feature_means_stdv_firstorderdifference_concatenated(embeddings)
-
+                elif request_path == '/manual':
+                    # Manually defined feature extraction
+                    print('Extracting manually defined features...')
+                    audio_data = np.array(audio_data)
+                    embeddings = np.array([]) # just to keep the code running
+                    # array of manually defined features names from a comma separated string in the query parameter
+                    feature_names = query_params.get('features', [''])[0].split(',')
+                    features = []
+                    features_stdv = []
+                    # add each feature to the features array
+                    for feature_name in feature_names:
+                        if feature_name == 'spectral_centroid':
+                            spectral_centroids_mean, spectral_centroids_stdv = get_spectral_centroid_mean_stdv(audio_data, sample_rate)
+                            features.append(spectral_centroids_mean)
+                            features_stdv.append(spectral_centroids_stdv)
+                        elif feature_name == 'spectral_rolloff':
+                            spectral_rolloff_mean, spectral_rolloff_stdv = get_spectral_rolloff_mean_stdv(audio_data, sample_rate)
+                            features.append(spectral_rolloff_mean)
+                            features_stdv.append(spectral_rolloff_stdv)
+                        elif feature_name == 'zero_crossing_rate':
+                            zero_crossing_rate, zero_crossing_rate_stdv = get_zero_crossing_rate_mean_stdv(audio_data, sample_rate)
+                            features.append(zero_crossing_rate)
+                            features_stdv.append(zero_crossing_rate_stdv)
+                        elif feature_name == 'tempo':
+                            tempo_mean, tempo_stdv = get_tempo(audio_data, sample_rate)
+                            features.append(tempo_mean)
+                            features_stdv.append(tempo_stdv)
+                        elif feature_name == 'chroma_stft':
+                            chrome_stft_mean, chroma_stft_stdv = get_chroma_stft_mean_stdv(audio_data, sample_rate)
+                            features.append(chrome_stft_mean)
+                            features_stdv.append(chroma_stft_stdv)
+                        elif feature_name == 'mel_spectrogram':
+                            mel_spectrogram_mean, mel_spectrogram_stdv = get_mel_spectrogram_mean_stdv(audio_data, sample_rate)
+                            features.append(mel_spectrogram_mean)
+                            features_stdv.append(mel_spectrogram_stdv)
+                        elif feature_name == 'rms':
+                            rms_mean, rms_stdv = get_rms_mean_stdv(audio_data, sample_rate)
+                            features.append(rms_mean)
+                            features_stdv.append(rms_stdv)
+                        elif feature_name == 'spectral_bandwidth':
+                            spectral_bandwidth, spectral_bandwidth_stdv = get_spectral_bandwidth_mean_stdv(audio_data, sample_rate)
+                            features.append(spectral_bandwidth)
+                            features_stdv.append(spectral_bandwidth_stdv)
+                        elif feature_name == 'spectral_contrast':
+                            spectral_contrast_mean, spectral_contrast_stdv = get_spectral_contrast_mean_stdv(audio_data, sample_rate)
+                            features.append(spectral_contrast_mean)
+                            features_stdv.append(spectral_contrast_stdv)
+                        elif feature_name == 'spectral_flatness':
+                            spectral_flatness_mean, spectral_flatness_stdv = get_spectral_flatness_mean_stdv(audio_data, sample_rate)
+                            features.append(spectral_flatness_mean)
+                            features_stdv.append(spectral_flatness_stdv)
+                        elif feature_name == 'spectral_flux':
+                            spectral_flux_mean, spectral_flux_stdv = get_spectral_flux_mean_stdv(audio_data, sample_rate)
+                            features.append(spectral_flux_mean)
+                            features_stdv.append(spectral_flux_stdv)
+                            
             print('Embeddings extracted shape:', embeddings.shape)
 
             # features = get_feature_means_stdv_firstorderdifference_concatenated(embeddings)
 
-            print('Features extracted shape:', features.shape)
+            print('Features extracted shape:', np.array(features).shape)
+
+            print('features:', features)
 
             # print('MFCC features extracted:', features)
 
             end = time.time()
             print('features_mfcc: Time taken to extract features:', end - start)
 
-            response = {'status': 'received standalone audio', 'features': features.tolist(), 'embedding': embeddings.tolist()}
+            # if features is a numpy array, convert it to a list
+            if isinstance(features, np.ndarray):
+                features = features.tolist()
+
+            # ensure all values in features are of type float
+            features = [float(f) for f in features]
+            
+            response = {'status': 'received standalone audio', 'features': features, 'embedding': embeddings.tolist()}
             await websocket.send(json.dumps(response))
     except Exception as e:
         print('features: Exception', e)
