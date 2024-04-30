@@ -45,6 +45,7 @@ async def socket_server(websocket, path):
                 print('Extracting MFCC features...')
                 embeddings = get_mfcc_features(audio_data, sample_rate)
                 features = get_feature_means_stdv_firstorderdifference_concatenated(embeddings)
+                features_type = 'mfcc'
             else:
                 ckpt_dir = query_params.get('ckpt_dir', [None])[0]
                 audio_data = [audio_data]
@@ -55,20 +56,24 @@ async def socket_server(websocket, path):
                     use_activation = query_params.get('use_activation', [False])[0]
                     embeddings = get_vggish_embeddings(audio_data, sample_rate, ckpt_dir, use_pca, use_activation)
                     features = get_feature_means_stdv_firstorderdifference_concatenated(embeddings.T) # transpose the embeddings to match the shape of the MFCC features: (num_features, num_frames
+                    features_type = 'vggish'
                 elif request_path == '/pann':
                     print('Extracting PANN embeddings...')
                     embeddings = get_pann_embeddings(audio_data, sample_rate, ckpt_dir)
                     features = embeddings
+                    features_type = 'pann'
                 elif request_path == '/clap':
                     print('Extracting CLAP embeddings...')
                     submodel_name = query_params.get('submodel_name', ["630k-audioset"])[0]
                     enable_fusion = query_params.get('enable_fusion', [False])[0]
                     embeddings = get_clap_embeddings(audio_data, sample_rate, ckpt_dir, submodel_name, enable_fusion)
                     features = embeddings[0]
+                    features_type = 'clap'
                 elif request_path == '/encodec':
                     print('Extracting EnCodec embeddings...')
                     embeddings = get_encodec_embeddings(audio_data, sample_rate, ckpt_dir)
                     features = get_feature_means_stdv_firstorderdifference_concatenated(embeddings)
+                    features_type = 'encodec'
                 elif request_path == '/manual':
                     # Manually defined feature extraction
                     print('Extracting manually defined features...')
@@ -78,6 +83,7 @@ async def socket_server(websocket, path):
                     feature_names = query_params.get('features', [''])[0].split(',')
                     features = []
                     features_stdv = []
+                    features_type = feature_names
                     # add each feature to the features array
                     for feature_name in feature_names:
                         if feature_name == 'spectral_centroid':
@@ -145,7 +151,7 @@ async def socket_server(websocket, path):
             # ensure all values in features are of type float
             features = [float(f) for f in features]
             
-            response = {'status': 'received standalone audio', 'features': features, 'embedding': embeddings.tolist()}
+            response = {'status': 'received standalone audio', 'features': features, 'embedding': embeddings.tolist(), 'type': features_type}
             await websocket.send(json.dumps(response))
             await asyncio.sleep(30)
     except websockets.ConnectionClosed as e:
