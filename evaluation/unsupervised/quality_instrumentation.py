@@ -36,7 +36,16 @@ async def socket_server(websocket, path):
               fitness_value = fitness_result.item()
             elif method == 'nsynth_instrument_topscore':
               fitness_result = nsynth_instrument_topscore_and_index_and_class(audio_data, MODELS_PATH)
-              fitness_value = { 'top_score': fitness_result[0].item(), 'index': fitness_result[1].item(), 'top_score_class': fitness_result[2]}
+              fitness_value = { 'top_score': fitness_result[0].item(), 'index': fitness_result[1].item(), 'top_score_class': fitness_result[2] }
+
+            # TODO argmax of logits from: https://huggingface.co/docs/transformers/v4.40.1/en/model_doc/audio-spectrogram-transformer#transformers.ASTForAudioClassification
+
+            # TODO: max classification from ?
+            # - https://huggingface.co/mtg-upf/discogs-maest-30s-pw-129e 
+            # - https://huggingface.co/mtg-upf
+            # - https://essentia.upf.edu/models.html#maest
+            # - https://github.com/palonso/MAEST
+
 
           print('Fitness value (instrumentation):', fitness_value)
 
@@ -47,7 +56,7 @@ async def socket_server(websocket, path):
           await websocket.send(json.dumps(response))
     except Exception as e:
         print('nsynth_instrument: Exception', e)
-        response = {'status': 'ERROR'}
+        response = {'status': 'ERROR' + str(e)}
         await websocket.send(json.dumps(response))
 
 # Parse command line arguments

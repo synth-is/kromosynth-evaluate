@@ -1,6 +1,13 @@
 from essentia.standard import TensorflowPredictEffnetDiscogs, TensorflowPredict2D
 import numpy as np
 
+# @inproceedings{alonso2020tensorflow,
+#   title={Tensorflow Audio Models in {Essentia}},
+#   author={Alonso-Jim{\'e}nez, Pablo and Bogdanov, Dmitry and Pons, Jordi and Serra, Xavier},
+#   booktitle={International Conference on Acoustics, Speech and Signal Processing ({ICASSP})},
+#   year={2020}
+# }
+
 # https://essentia.upf.edu/models.html#nsynth-instrument
 # returns the mean of the probabilities of the 11 instrument classes
 def nsynth_instrument_mean(audio_data, models_path):

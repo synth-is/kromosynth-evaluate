@@ -50,6 +50,8 @@ class STFT_loss(tf.keras.losses.Loss):
         super().__init__(name=name, **kwargs)
         self.m = m
 
+        tf.compat.v1.disable_eager_execution() # https://stackoverflow.com/a/66585728/169858
+
     def call(self, y_true, y_pred):
 
         loss = 0

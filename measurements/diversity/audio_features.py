@@ -1,6 +1,13 @@
 import librosa
 import numpy as np
 from frechet_audio_distance import FrechetAudioDistance
+from essentia.standard import TensorflowPredictVGGish, TensorflowPredictMAEST, TensorflowPredictEffnetDiscogs, TensorflowPredictMusiCNN
+import panns_inference
+from panns_inference import AudioTagging, SoundEventDetection, labels
+import openl3
+from transformers import AutoProcessor, ASTModel, AutoModel, AutoFeatureExtractor # ASTFeatureExtractor
+import torch
+import pyACA
 import sklearn
 
 # idea from: https://medium.com/@LeonFedden/comparative-audio-analysis-with-wavenet-mfccs-umap-t-sne-and-pca-cb8237bfce2f
@@ -26,22 +33,15 @@ def get_feature_means_stdv_firstorderdifference_concatenated(features):
 
     return features_concatenated
 
-
-def get_mfcc_features(audio_data, sample_rate, frame_length=0.025, frame_step=0.01, num_mel_bins=40, num_mfccs=13, lower_frequency=20, upper_frequency=4000):
-    """
-    Extracts MFCC features from the given audio data.
-    Returns a concatenated array of MFCC features for the entire audio data.
-    """
-    # Extract MFCC features for each frame
-    mfcc_features = librosa.feature.mfcc(
-        y=audio_data, sr=sample_rate, n_mfcc=num_mfccs, n_mels=num_mel_bins, fmin=lower_frequency, fmax=upper_frequency, hop_length=int(frame_step * sample_rate), n_fft=int(frame_length * sample_rate)
-    )
-    return mfcc_features
-
-# the following functions could in fact be just one, but here they're separate for some kind of documentation
-
 # sample_rate should be 16000 for VGGish
 def get_vggish_embeddings(audio_data, sample_rate, ckpt_dir, use_pca=False, use_activation=False):
+
+    # TODO replace with?: https://www.kaggle.com/models/google/vggish
+
+    if sample_rate != 16000:
+        # Resample the audio data to 16 kHz
+        audio_data[0] = librosa.resample(y=audio_data[0], orig_sr=sample_rate, target_sr=16000)
+        sample_rate = 16000
     frechet = FrechetAudioDistance(
         ckpt_dir=ckpt_dir,
         model_name="vggish",
@@ -56,8 +56,33 @@ def get_vggish_embeddings(audio_data, sample_rate, ckpt_dir, use_pca=False, use_
     embeddings = frechet.get_embeddings(audio_data, sample_rate)
     return embeddings
 
+def get_vggish_embeddings_essentia(audio_data, sample_rate, models_path):
+    if sample_rate != 16000:
+        # Resample the audio data to 16 kHz
+        audio_data = librosa.resample(y=audio_data, orig_sr=sample_rate, target_sr=16000)
+        sample_rate = 16000
+    # https://essentia.upf.edu/models.html#audioset-vggish
+    # https://doi.org/10.1109/ICASSP40776.2020.9054688
+    VGGISH_MODEL_PATH=f"{models_path}/audioset-vggish-3.pb"
+    print('VGGish model path:', VGGISH_MODEL_PATH)
+    model = TensorflowPredictVGGish(graphFilename=VGGISH_MODEL_PATH, output="model/vggish/embeddings")
+    embeddings = model(audio_data)
+    return embeddings
+
 # sample_rate should be 8000, 16000 or 32000 for PANN
 def get_pann_embeddings(audio_data, sample_rate, ckpt_dir):
+    if sample_rate > 32000:
+        # Resample the audio data to 32 kHz
+        audio_data[0] = librosa.resample(y=audio_data[0], orig_sr=sample_rate, target_sr=32000)
+        sample_rate = 32000
+    elif sample_rate > 16000:
+        # Resample the audio data to 16 kHz
+        audio_data[0] = librosa.resample(y=audio_data[0], orig_sr=sample_rate, target_sr=16000)
+        sample_rate = 16000
+    elif sample_rate > 8000:
+        # Resample the audio data to 8 kHz
+        audio_data[0] = librosa.resample(y=audio_data[0], orig_sr=sample_rate, target_sr=8000)
+        sample_rate = 8000
     frechet = FrechetAudioDistance(
         ckpt_dir=ckpt_dir,
         model_name="pann",
@@ -67,6 +92,19 @@ def get_pann_embeddings(audio_data, sample_rate, ckpt_dir):
     )
     embeddings = frechet.get_embeddings(audio_data, sample_rate)
     return embeddings
+
+# https://github.com/qiuqiangkong/panns_inference?tab=readme-ov-file
+# [1] Kong, Qiuqiang, Yin Cao, Turab Iqbal, Yuxuan Wang, Wenwu Wang, and Mark D. Plumbley. "PANNs: Large-Scale Pretrained Audio Neural Networks for Audio Pattern Recognition." arXiv preprint arXiv:1912.10211 (2019).
+def get_pann_embeddings_panns_inference(audio_data, sample_rate, ckpt_dir):
+    if sample_rate != 32000:
+        # Resample the audio data to 32 kHz
+        audio_data = librosa.resample(y=audio_data, orig_sr=sample_rate, target_sr=32000)
+        sample_rate = 32000
+    at = AudioTagging(checkpoint_path=ckpt_dir) # model_type='PANNsCNN14Att'
+    audio_data = audio_data[None, :]
+    print('audio_data shape:', audio_data.shape)
+    (clipwise_output, embedding) = at.inference(audio_data)
+    return embedding
 
 # sample_rate should be 48000 for CLAP
 # submodel options (from https://github.com/gudgud96/frechet-audio-distance/blob/main/test/test_all.ipynb):
@@ -83,6 +121,10 @@ def get_pann_embeddings(audio_data, sample_rate, ckpt_dir):
 def get_clap_embeddings(audio_data, sample_rate, ckpt_dir, submodel_name="630k-audioset", enable_fusion=False):
     print('submodel_name:', submodel_name)
     print('enable_fusion:', enable_fusion)
+    if sample_rate != 48000:
+        # Resample the audio data to 48 kHz
+        audio_data[0] = librosa.resample(y=audio_data[0], orig_sr=sample_rate, target_sr=48000)
+        sample_rate = 48000
     frechet = FrechetAudioDistance(
         ckpt_dir=ckpt_dir,
         model_name="clap",
@@ -98,6 +140,10 @@ def get_clap_embeddings(audio_data, sample_rate, ckpt_dir, submodel_name="630k-a
 
 # sample_rate should be 24000 or 48000 (then stereo) for EnCodec
 def get_encodec_embeddings(audio_data, sample_rate, ckpt_dir):
+    if sample_rate != 24000:
+        # Resample the audio data to 24 kHz
+        audio_data[0] = librosa.resample(y=audio_data[0], orig_sr=sample_rate, target_sr=24000)
+        sample_rate = 24000
     frechet = FrechetAudioDistance(
         ckpt_dir=ckpt_dir,
         model_name="encodec",
@@ -108,6 +154,137 @@ def get_encodec_embeddings(audio_data, sample_rate, ckpt_dir):
     embeddings = frechet.get_embeddings(audio_data, sample_rate)
     return embeddings
 
+
+# @inproceedings{alonso2023Efficient,
+#   title={Efficient Supervised Training of Audio Transformers for Music Representation Learning},
+#   author={Pablo Alonso-Jim{\'e}nez and Xavier Serra and Dmitry Bogdanov},
+#   booktitle={Proceedings of the International Society for Music Information Retrieval Conference},
+#   year={2023},
+# }
+
+# MAEST 
+# - https://essentia.upf.edu/models.html#maest
+# - https://repositori.upf.edu/handle/10230/58023
+maest_model = None
+def get_maest_embeddings(audio_data, sample_rate, models_path):
+    global maest_model
+    if sample_rate != 16000:
+        # Resample the audio data to 16 kHz
+        audio_data = librosa.resample(y=audio_data, orig_sr=sample_rate, target_sr=16000)
+        sample_rate = 16000
+    # if the input signal is shorter than 5 seconds, it will be zero-padded to 5 seconds
+    if len(audio_data) < 5 * sample_rate:
+        audio_data = librosa.util.fix_length(audio_data, size=(6 * sample_rate))
+    # https://essentia.upf.edu/models.html#maest
+    # https://repositori.upf.edu/handle/10230/58023
+    if maest_model is None:
+        MAEST_MODEL_PATH=f"{models_path}/discogs-maest-5s-pw-1.pb"
+        print('MAEST model path:', MAEST_MODEL_PATH)
+        maest_model = TensorflowPredictMAEST(graphFilename=MAEST_MODEL_PATH, output="StatefulPartitionedCall:7")
+    embeddings = maest_model(audio_data)
+    return embeddings
+
+
+# Discogs-EffNet https://essentia.upf.edu/models.html#discogs-effnet
+discogs_effnet_model = None
+def get_discogs_effnet_embeddings(audio_data, sample_rate, models_path):
+    global discogs_effnet_model
+    if sample_rate != 16000:
+        # Resample the audio data to 16 kHz
+        audio_data = librosa.resample(y=audio_data, orig_sr=sample_rate, target_sr=16000)
+        sample_rate = 16000
+    # https://essentia.upf.edu/models.html#discogs-effnet
+    DISCOGS_EFFNET_MODEL_PATH=f"{models_path}/discogs-effnet-bs64-1.pb"
+    print('Discogs-EffNet model path:', DISCOGS_EFFNET_MODEL_PATH)
+    if discogs_effnet_model is None:
+        discogs_effnet_model = TensorflowPredictEffnetDiscogs(graphFilename=DISCOGS_EFFNET_MODEL_PATH, output="PartitionedCall:1")
+    embeddings = discogs_effnet_model(audio_data)
+    return embeddings
+
+# TODO MSD-MusiCNN https://essentia.upf.edu/models.html#msd-musicnn
+msd_musicnn_model = None
+def get_msd_musicnn_embeddings(audio_data, sample_rate, models_path):
+    global msd_musicnn_model
+    if sample_rate != 16000:
+        # Resample the audio data to 16 kHz
+        audio_data = librosa.resample(y=audio_data, orig_sr=sample_rate, target_sr=16000)
+        sample_rate = 16000
+    # https://essentia.upf.edu/models.html#msd-musicnn
+    MSD_MUSICNN_MODEL_PATH=f"{models_path}/msd-musicnn-1.pb"
+    print('MSD-MusiCNN model path:', MSD_MUSICNN_MODEL_PATH)
+    if msd_musicnn_model is None:
+        msd_musicnn_model = TensorflowPredictMusiCNN(graphFilename=MSD_MUSICNN_MODEL_PATH, output="model/dense/BiasAdd")
+    embeddings = msd_musicnn_model(audio_data)
+    return embeddings
+
+
+# Wav2Vec
+wav2vec_model = None
+wav2vec_feature_extractor = None
+def get_wav2vec_embeddings(audio_data, sample_rate):
+    global wav2vec_model, wav2vec_feature_extractor
+    if sample_rate != 16000:
+        # Resample the audio data to 16 kHz
+        audio_data = librosa.resample(y=audio_data, orig_sr=sample_rate, target_sr=16000)
+        sample_rate = 16000
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    if wav2vec_model is None:
+        wav2vec_model = AutoModel.from_pretrained('facebook/wav2vec2-base').to(device)
+    if wav2vec_feature_extractor is None:
+        wav2vec_feature_extractor = AutoFeatureExtractor.from_pretrained('facebook/wav2vec2-base')
+
+    inputs = wav2vec_feature_extractor(
+        audio_data, sampling_rate=wav2vec_feature_extractor.sampling_rate, return_tensors="pt",
+        padding=True, return_attention_mask=True, truncation=True, max_length=16_000
+    ).to(device)
+
+    with torch.no_grad():
+        embeddings = wav2vec_model(**inputs).last_hidden_state.mean(dim=1)
+
+    return embeddings.numpy()
+
+
+# ASTFeatureExtractor https://huggingface.co/docs/transformers/v4.40.1/en/model_doc/audio-spectrogram-transformer#transformers.ASTFeatureExtractor (https://huggingface.co/docs/transformers/model_doc/audio-spectrogram-transformer)
+# https://arxiv.org/abs/2104.01778
+
+# [1] Look, Listen and Learn More: Design Choices for Deep Audio Embeddings
+# Aurora Cramer, Ho-Hsiang Wu, Justin Salamon, and Juan Pablo Bello.
+# IEEE Int. Conf. on Acoustics, Speech and Signal Processing (ICASSP), pages 3852–3856, Brighton, UK, May 2019.
+
+# [2] Look, Listen and Learn
+# Relja Arandjelović and Andrew Zisserman
+# IEEE International Conference on Computer Vision (ICCV), Venice, Italy, Oct. 2017.
+ast_model = None
+ast_processor = None
+def get_ast_embeddings(audio_data, sample_rate):
+    global ast_model, ast_processor
+    if sample_rate != 16000:
+        # Resample the audio data to 16 kHz
+        audio_data = librosa.resample(y=audio_data, orig_sr=sample_rate, target_sr=16000)
+        sample_rate = 16000
+    if ast_model is None:
+        ast_model = ASTModel.from_pretrained("MIT/ast-finetuned-audioset-10-10-0.4593")
+    if ast_processor is None:
+        ast_processor = AutoProcessor.from_pretrained("MIT/ast-finetuned-audioset-10-10-0.4593")
+    
+    inputs = ast_processor(audio_data, sampling_rate=sample_rate, return_tensors="pt")
+    with torch.no_grad():
+        outputs = ast_model(**inputs)
+    last_hidden_states = outputs.last_hidden_state
+    return last_hidden_states.numpy()
+
+# OpenL3
+# TODO: Openl3 only supports Python 3.6 to 3.8, while currently we're using Python 3.10 - https://github.com/marl/openl3/issues/96#issuecomment-2077753600
+def get_openl3_embeddings(audio_data, sample_rate):
+    print('audio_data shape:', audio_data.shape)
+    emb, ts = openl3.get_audio_embedding(audio_data, sample_rate)
+    # , input_repr="mel128", frontend='librosa' at https://github.com/qdrant/examples/tree/master/qdrant_101_audio_data#openl3
+    # other examples at: https://openl3.readthedocs.io/en/latest/tutorial.html
+    return emb
+
+
+
+# manual / expert features:
 
 def get_weighted_mean_stdv_nomalized( features, energy, sample_rate, normalize_by_nyquist=True ):
     # Compute the weighted mean of the features
@@ -140,9 +317,32 @@ def get_weighted_mean_stdv_nomalized( features, energy, sample_rate, normalize_b
     print('Normalized weighted standard deviation:', normalized_std_deviation_feature)
 
     return normalized_mean_feature, normalized_std_deviation_feature
-    
 
+def minmax_normalize(features):
+    min_val = np.min(features)
+    max_val = np.max(features)
+    normalized_features = (features - min_val) / (max_val - min_val)
+    return normalized_features
+
+def l1_normalize(vector):
+    norm = sum(abs(v) for v in vector)
+    return [v / norm for v in vector] if norm != 0 else vector
+
+def l2_normalize(vector):
+    norm = sum(v ** 2 for v in vector) ** 0.5
+    return [v / norm for v in vector] if norm != 0 else vector
+
+# 3.5.1 Spectral Centroid
 def get_spectral_centroid_mean_stdv(audio_data, sample_rate, frame_length=0.025, frame_step=0.01):
+
+    # pyACA
+    # [vsc, t] = pyACA.computeFeature("SpectralCentroid", audio_data, sample_rate)
+    # vsc_normalized = minmax_normalize(vsc)
+    # vsc_mean = np.mean(vsc_normalized)
+    # vsc_l2_normalized = l2_normalize(vsc)
+    # vsc_l2_normalized_mean = np.mean(vsc_l2_normalized)
+
+    # librosa, weighted by energy
     frame_length_samples = int(frame_length * sample_rate)
     hop_length_samples = int(frame_step * sample_rate)
     # Compute the short-time Fourier transform (STFT) of the audio signal
@@ -150,12 +350,45 @@ def get_spectral_centroid_mean_stdv(audio_data, sample_rate, frame_length=0.025,
 
     # Compute spectral centroids and energy for each frame
     spectral_centroids = librosa.feature.spectral_centroid(S=stft, sr=sample_rate, n_fft=frame_length_samples, hop_length=hop_length_samples)
+
+    # L2 normalization, also called the Euclidean norm
+    # spectral_centroids_normalized_sklearn = sklearn.preprocessing.normalize(spectral_centroids, norm='l2')
+    # spectral_centroids_normalized_sklearn_mean = np.mean(spectral_centroids_normalized_sklearn)
+
     spectral_centroids = spectral_centroids[0]
     
     energy = np.sum(stft**2, axis=0)  # Energy of each frame
+    spectral_centroids_weighted_mean, spectral_centroids_weighted_stdv = get_weighted_mean_stdv_nomalized(spectral_centroids, energy, sample_rate)
+    return spectral_centroids_weighted_mean, spectral_centroids_weighted_stdv
 
-    return get_weighted_mean_stdv_nomalized(spectral_centroids, energy, sample_rate)
 
+# 3.5.2 Spectral Spread
+# There are indications that the spectral spread is related to the timbre of a sound. Sounds with a narrow spectral spread are perceived as bright, while sounds with a wide spectral spread are perceived as dark.
+# "There are indications that the spectral spread is of some relevance in describin the perceptual dimensions of timbre" - Lerch
+def get_spectral_spread(audio_data, sample_rate):
+    [vss, t] = pyACA.computeFeature("SpectralSpread", audio_data, sample_rate)
+    vss_l2_normalized = l2_normalize(vss)
+    vss_l2_normalized_mean = np.mean(vss_l2_normalized)
+    return vss_l2_normalized_mean
+
+# 3.5.3 Spectral Skewness and Kurtosis
+# Skewness is a measure of the asymmetry of the distribution of values around the mean. A positive skewness indicates that the distribution is skewed to the right, while a negative skewness indicates that the distribution is skewed to the left.
+# Kurtosis is a measure of the "peakedness" of the distribution of values. A high kurtosis indicates that the distribution has a sharp peak, while a low kurtosis indicates that the distribution has a flat peak.
+def get_spectral_skewness(audio_data, sample_rate):
+    [vsk, t] = pyACA.computeFeature("SpectralSkewness", audio_data, sample_rate)
+    vsk_l2_normalized = l2_normalize(vsk)
+    vsk_l2_normalized_mean = np.mean(vsk_l2_normalized)
+    return vsk_l2_normalized_mean
+
+def get_spectral_kurtosis(audio_data, sample_rate):
+    [vsk, t] = pyACA.computeFeature("SpectralKurtosis", audio_data, sample_rate)
+    # min-max normalization to get absolute values
+    vsk_minmax_normalized = minmax_normalize(vsk)
+    vsk_minmax_normalized_mean = np.mean(vsk_minmax_normalized)
+    return vsk_minmax_normalized_mean
+
+# 3.5.4 Spectral Rolloff
+# The spectral rolloff is a measure of the frequency below which a certain percentage of the total spectral energy is contained. It is related to the brightness of a sound.
 def get_spectral_rolloff_mean_stdv(audio_data, sample_rate, frame_length=0.025, frame_step=0.01, roll_percent=0.85):
     stft = np.abs(librosa.stft(audio_data))
 
@@ -165,7 +398,122 @@ def get_spectral_rolloff_mean_stdv(audio_data, sample_rate, frame_length=0.025, 
 
     return get_weighted_mean_stdv_nomalized(spectral_rolloffs, energy, sample_rate)
 
+# 3.5.5 Spectral Decrease
+# "The spectral decrease estimates the steepness of the decrease of the spectral envolope over frequncy." - Lerch
+def get_spectral_decrease(audio_data, sample_rate):
+    [vsd, t] = pyACA.computeFeature("SpectralDecrease", audio_data, sample_rate)
+    vsd_l2_normalized = l2_normalize(vsd)
+    vsd_l2_normalized_mean = np.mean(vsd_l2_normalized)
+    return vsd_l2_normalized_mean
+
+# 3.5.6 Spectral Slope
+def get_spectral_slope(audio_data, sample_rate):
+    [vsl, t] = pyACA.computeFeature("SpectralSlope", audio_data, sample_rate)
+    vsl_minmax_normalized = minmax_normalize(vsl)
+    vsl_minmax_normalized_mean = np.mean(vsl_minmax_normalized)
+    return vsl_minmax_normalized_mean
+
+# 3.5.7 Mel Frequency Cepstral Coefficients (MFCCs): for now not concatenated into a single value but rather returned as a feature vector and used in the same way as the (DNN, Transformer) learned features
+def get_mfcc_features(audio_data, sample_rate, frame_length=0.025, frame_step=0.01, num_mel_bins=40, num_mfccs=13, lower_frequency=20, upper_frequency=4000):
+
+    # [vmc, t] = pyACA.computeFeature("SpectralMfccs", audio_data, sample_rate)
+
+    """
+    Extracts MFCC features from the given audio data.
+    Returns a concatenated array of MFCC features for the entire audio data.
+    """
+    # Extract MFCC features for each frame
+    mfcc_features = librosa.feature.mfcc(
+        y=audio_data, sr=sample_rate, n_mfcc=num_mfccs, n_mels=num_mel_bins, fmin=lower_frequency, fmax=upper_frequency, hop_length=int(frame_step * sample_rate), n_fft=int(frame_length * sample_rate)
+    )
+    return mfcc_features
+
+# 3.5.8 Spectral Flux
+# The spectral flux is a measure of the change in the spectral envelope of a signal over time.
+def get_spectral_flux_mean_stdv(audio_data, sample_rate, frame_length=0.025, frame_step=0.01):
+
+    # pyACA computes a similar value as librosa.onset.onset_strength in this case; opting for it's simpler interface:
+    [vsf, t] = pyACA.computeFeature("SpectralFlux", audio_data, sample_rate)
+    vsf_l2_normalized = l2_normalize(vsf)
+    vsf_l2_normalized_mean = np.mean(vsf_l2_normalized)
+    vsf_l2_normalized_stdv = np.std(vsf_l2_normalized)
+
+    # spectral_flux = librosa.onset.onset_strength(y=audio_data, sr=sample_rate, n_fft=int(frame_length * sample_rate), hop_length=int(frame_step * sample_rate))
+    # min_spec_flux = np.min(spectral_flux)
+    # max_spec_flux = np.max(spectral_flux)
+    # normalized_spec_flux = (spectral_flux - min_spec_flux) / (max_spec_flux - min_spec_flux)
+
+    # # spectral_flux = sklearn.preprocessing.normalize(spectral_flux)
+
+    # print('normalized spectral_flux:', normalized_spec_flux)
+    # spectral_flux_mean = np.mean(normalized_spec_flux)
+    # spectral_flux_stdv = np.std(normalized_spec_flux)
+    # return float(spectral_flux_mean), float(spectral_flux_stdv)
+
+    return vsf_l2_normalized_mean, vsf_l2_normalized_stdv
+
+# 3.5.9 Spectral Crest Factor
+# The spectral crest factor is a measure of the peakiness of the spectral envelope of a signal.
+# "The spectral crest factor gives an estimate on "how sinusodal" a spectrum is. It is a simple measuer of tonalness in the sense that it crudely estimates the amount of tonal components in the signal as opposed to noisy components" - Lerch
+def get_spectral_crest_factor(audio_data, sample_rate):
+    [vscf, t] = pyACA.computeFeature("SpectralCrestFactor", audio_data, sample_rate)
+    # vscf_l2_normalized = l2_normalize(vscf)
+    # vscf_l2_normalized_mean = np.mean(vscf_l2_normalized)
+    vscf_mean = np.mean(vscf)
+    return vscf_mean
+
+# 3.5.10 Spectral Flatness
+def get_spectral_flatness_mean_stdv(audio_data, sample_rate, frame_length=0.025, frame_step=0.01):
+
+    # the results from pyACA and librosa differ by orders of magnitude; optiong for pyACA for now
+
+    [vsf, t] = pyACA.computeFeature("SpectralFlatness", audio_data, sample_rate)
+    vsf_l2_normalized = l2_normalize(vsf)
+    # vsf_l2_normalized_mean = np.mean(vsf_l2_normalized)
+    # vsf_l2_normalized_stdv = np.std(vsf_l2_normalized)
+    vsf_mean = np.mean(vsf)
+    vsf_stdv = np.std(vsf)
+
+    # stft = np.abs(librosa.stft(audio_data))
+    # spectral_flatness = librosa.feature.spectral_flatness(S=stft)
+    # spectral_flatness = spectral_flatness[0]
+    # energy = np.sum(stft**2, axis=0)  # Energy of each frame
+    # spectral_flatness_weighted_mean, spectral_flatness_weighted_stdv = get_weighted_mean_stdv_nomalized(spectral_flatness, energy, sample_rate, normalize_by_nyquist=False)
+    
+    return vsf_mean, vsf_stdv
+
+    # spectral_flatness = librosa.feature.spectral_flatness(y=audio_data, n_fft=int(frame_length * sample_rate), hop_length=int(frame_step * sample_rate))
+    # spectral_flatness = spectral_flatness[0]
+    # spectral_flatness = sklearn.preprocessing.normalize(spectral_flatness)
+    # print('normalized spectral_flatness:', spectral_flatness)
+    # spectral_flatness_mean = np.mean(spectral_flatness)
+    # spectral_flatness_stdv = np.std(spectral_flatness)
+    # return spectral_flatness_mean, spectral_flatness_stdv
+
+# 3.5.11 Tonal Power Ratio
+# "Another way to compute the tonalness of a spectrum..." - Lerch
+def get_tonal_power_ratio(audio_data, sample_rate):
+    [vtp, t] = pyACA.computeFeature("SpectralTonalPowerRatio", audio_data, sample_rate)
+    # vtp_l2_normalized = l2_normalize(vtp)
+    # vtp_l2_normalized_mean = np.mean(vtp_l2_normalized)
+    vtp_mean = np.mean(vtp)
+    return vtp_mean
+    return vtp_mean
+
+# 3.5.12 Maximum of Autocorrelation Function
+def get_max_autocorrelation(audio_data, sample_rate):
+    [vmax, t] = pyACA.computeFeature("TimeMaxAcf", audio_data, sample_rate)
+    # vmax_l2_normalized = l2_normalize(vmax)
+    # vmax_l2_normalized_mean = np.mean(vmax_l2_normalized)
+    vmax_mean = np.mean(vmax)
+    return vmax_mean
+
 def get_zero_crossing_rate_mean_stdv(audio_data, sample_rate, frame_length=0.025, frame_step=0.01):
+
+    # [vzc, t] = pyACA.computeFeature("TimeZeroCrossingRate", audio_data, sample_rate)
+    # vzc_l2_normalized = l2_normalize(vzc)
+    # vzc_l2_normalized_mean = np.mean(vzc_l2_normalized)
+
     frame_length_samples = int(frame_length * sample_rate)
     hop_length_samples = int(frame_step * sample_rate)
     # Compute the short-time Fourier transform (STFT) of the audio signal
@@ -179,12 +527,9 @@ def get_zero_crossing_rate_mean_stdv(audio_data, sample_rate, frame_length=0.025
     zero_crossing_rates = librosa.feature.zero_crossing_rate(audio_data, frame_length=frame_length_samples, hop_length=hop_length_samples)
     zero_crossing_rates = zero_crossing_rates[0]
 
-    return get_weighted_mean_stdv_nomalized(zero_crossing_rates, energy, sample_rate, normalize_by_nyquist=False)
-
-def get_tempo(audio_data, sample_rate):
-    tempo, _ = librosa.beat.beat_track(y=audio_data, sr=sample_rate)
-    print('tempo:', tempo)
-    return tempo
+    zero_crossing_rate_weighted_mean, zero_crossing_rate_weighted_stdv = get_weighted_mean_stdv_nomalized(zero_crossing_rates, energy, sample_rate, normalize_by_nyquist=False)
+    return zero_crossing_rate_weighted_mean, zero_crossing_rate_weighted_stdv
+    
 
 def get_chroma_stft_mean_stdv(audio_data, sample_rate, frame_length=0.025, frame_step=0.01):
     chroma_stft = librosa.feature.chroma_stft(y=audio_data, sr=sample_rate, n_fft=int(frame_length * sample_rate), hop_length=int(frame_step * sample_rate))
@@ -197,6 +542,7 @@ def get_chroma_stft_mean_stdv(audio_data, sample_rate, frame_length=0.025, frame
     print('chroma_stft_stdv:', chroma_stft_stdv)
     return chroma_stft_mean, chroma_stft_stdv
 
+# TODO ommit
 def get_mel_spectrogram_mean_stdv(audio_data, sample_rate, frame_length=0.025, frame_step=0.01, num_mel_bins=40):
     # mel_spectrogram = librosa.feature.melspectrogram(y=audio_data, sr=sample_rate, n_mels=num_mel_bins, n_fft=int(frame_length * sample_rate), hop_length=int(frame_step * sample_rate))
     # mel_spectrogram = mel_spectrogram[0]
@@ -295,31 +641,13 @@ def get_spectral_contrast_mean_stdv(audio_data, sample_rate, frame_length=0.025,
     spectral_contrast_stdv = np.std(normalized_spectral_contrast)
     return spectral_contrast_mean, spectral_contrast_stdv
 
-def get_spectral_flatness_mean_stdv(audio_data, sample_rate, frame_length=0.025, frame_step=0.01):
-    stft = np.abs(librosa.stft(audio_data))
-    spectral_flatness = librosa.feature.spectral_flatness(S=stft)
-    spectral_flatness = spectral_flatness[0]
-    energy = np.sum(stft**2, axis=0)  # Energy of each frame
 
-    return get_weighted_mean_stdv_nomalized(spectral_flatness, energy, sample_rate, normalize_by_nyquist=False)
 
-    # spectral_flatness = librosa.feature.spectral_flatness(y=audio_data, n_fft=int(frame_length * sample_rate), hop_length=int(frame_step * sample_rate))
-    # spectral_flatness = spectral_flatness[0]
-    # spectral_flatness = sklearn.preprocessing.normalize(spectral_flatness)
-    # print('normalized spectral_flatness:', spectral_flatness)
-    # spectral_flatness_mean = np.mean(spectral_flatness)
-    # spectral_flatness_stdv = np.std(spectral_flatness)
-    # return spectral_flatness_mean, spectral_flatness_stdv
 
-def get_spectral_flux_mean_stdv(audio_data, sample_rate, frame_length=0.025, frame_step=0.01):
-    spectral_flux = librosa.onset.onset_strength(y=audio_data, sr=sample_rate, n_fft=int(frame_length * sample_rate), hop_length=int(frame_step * sample_rate))
-    min_spec_flux = np.min(spectral_flux)
-    max_spec_flux = np.max(spectral_flux)
-    normalized_spec_flux = (spectral_flux - min_spec_flux) / (max_spec_flux - min_spec_flux)
 
-    # spectral_flux = sklearn.preprocessing.normalize(spectral_flux)
 
-    print('normalized spectral_flux:', normalized_spec_flux)
-    spectral_flux_mean = np.mean(normalized_spec_flux)
-    spectral_flux_stdv = np.std(normalized_spec_flux)
-    return float(spectral_flux_mean), float(spectral_flux_stdv)   
+# TODO special iteration on structural features
+def get_tempo(audio_data, sample_rate):
+    tempo, _ = librosa.beat.beat_track(y=audio_data, sr=sample_rate)
+    print('tempo:', tempo)
+    return tempo

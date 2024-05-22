@@ -3,6 +3,7 @@ from sklearn.preprocessing import MinMaxScaler
 import pickle as pkl
 import time
 import matplotlib.pyplot as plt
+from umap.parametric_umap import ParametricUMAP, load_ParametricUMAP
 
 def plot_expected_variance_ratio(pca):
     print('Printing explained variance ratio...')
@@ -66,5 +67,22 @@ def get_pca_projection(features, n_components=2, should_fit=True, evorun_dir='',
 
     return scaled
 
+def get_umap_projection(features, n_components=2, should_fit=True, evorun_dir=''):
+    umap = ParametricUMAP(
+        n_components=n_components,
+        # autoencoder_loss = True, # TODO: how to use this? https://umap-learn.readthedocs.io/en/latest/parametric_umap.html#autoencoding-umap
+    )
+    if should_fit:
+        print('Fitting UMAP model...')
+        umap.fit(features)
+        umap.save(evorun_dir + 'umap_model')
+    else:
+        # assume that the UMAP model has been saved to disk - TODO: throw an error if it hasn't?
+        umap = load_ParametricUMAP(evorun_dir + 'umap_model')
 
-# TODO autoencoder, t-SNE, UMAP
+    transformed = umap.transform(features)
+    # transformed = umap.fit_transform(features)
+
+    return transformed
+
+# TODO autoencoder, t-SNE ?

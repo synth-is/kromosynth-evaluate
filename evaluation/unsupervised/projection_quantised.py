@@ -7,10 +7,11 @@ import argparse
 import os
 from setproctitle import setproctitle
 import time
+from urllib.parse import urlparse, parse_qs
 
 import sys
 sys.path.append('../..')
-from measurements.diversity.dimensionality_reduction import get_pca_projection
+from measurements.diversity.dimensionality_reduction import get_pca_projection, get_umap_projection
 from measurements.diversity.util.discretise import vector_to_index
 from util import filepath_to_port
 
@@ -56,18 +57,29 @@ async def socket_server(websocket, path):
         should_fit = jsonData['should_fit'] 
         print('should_fit: ', should_fit)
         evorun_dir = jsonData['evorun_dir']
-        pca_components = jsonData.get('pca_components')
-        # parse the comma separated string of dimensions into a list of integers, if it is not empty
-        if pca_components is not None and pca_components != '':
-            components_list = list(map(int, pca_components.split(',')))
-        else:
-            components_list = []
-        projection = get_pca_projection(feature_vectors, dimensions, should_fit, evorun_dir, plot_variance_ratio, components_list)
+
+        url_components = urlparse(path)
+        request_path = url_components.path
+
+        if request_path == '/pca':
+            pca_components = jsonData.get('pca_components')
+            # parse the comma separated string of dimensions into a list of integers, if it is not empty
+            if pca_components is not None and pca_components != '':
+                components_list = list(map(int, pca_components.split(',')))
+            else:
+                components_list = []
+            projection = get_pca_projection(feature_vectors, dimensions, should_fit, evorun_dir, plot_variance_ratio, components_list)
+        elif request_path == '/umap':
+            projection = get_umap_projection(feature_vectors, dimensions, should_fit, evorun_dir)
+            # TODO add reconstruction error to the response (https://gpt.uio.no/chat/439344)
+
 
         print('projection', projection)
 
-        cell_range_min = 0
-        cell_range_max = 1
+        cell_range_min = projection.min()
+        cell_range_max = projection.max()
+        print('cell_range_min', cell_range_min)
+        print('cell_range_max', cell_range_max)
         # discretise / quantise the projection
         # for each element in the projection, calculate the index of the cell it belongs to
         # scale the range of each cell value to the range 0 to 1 with a call like:
