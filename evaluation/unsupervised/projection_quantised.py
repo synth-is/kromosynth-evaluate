@@ -45,7 +45,11 @@ def remove_duplicates_keep_highest(discretised_projection, fitness_values):
 # - /two-features
 # - /umap
 
+cell_range_min_for_projection = {}
+cell_range_max_for_projection = {}
 async def socket_server(websocket, path):
+    global cell_range_min_for_projection
+    global cell_range_max_for_projection
     # start time
     start = time.time()
     try:
@@ -76,8 +80,21 @@ async def socket_server(websocket, path):
 
         print('projection', projection)
 
-        cell_range_min = projection.min()
-        cell_range_max = projection.max()
+        projection_min = projection.min()
+        projection_max = projection.max()
+        if request_path not in cell_range_min_for_projection or cell_range_min_for_projection[request_path] > projection_min:
+            cell_range_min_for_projection[request_path] = projection_min
+        if request_path not in cell_range_max_for_projection or cell_range_max_for_projection[request_path] < projection_max:
+            cell_range_max_for_projection[request_path] = projection_max
+        
+
+        # taking min/max of the projection values doesn't work, when there is just one (or few) vectors incoming - fixing to the range 0 to 1 for now:
+        # cell_range_min = projection.min()
+        # cell_range_max = projection.max()
+        # cell_range_min = 0
+        # cell_range_max = 1
+        cell_range_min = cell_range_min_for_projection[request_path]
+        cell_range_max = cell_range_max_for_projection[request_path]
         print('cell_range_min', cell_range_min)
         print('cell_range_max', cell_range_max)
         # discretise / quantise the projection
@@ -95,7 +112,7 @@ async def socket_server(websocket, path):
         await websocket.send(json.dumps(response))
         
     except Exception as e:
-        print('Error in projection_pca_quantised.py:', e)
+        print('Error in projection_quantised.py:', e)
         response = {'status': 'ERROR' + str(e)}
         await websocket.send(json.dumps(response))
         return

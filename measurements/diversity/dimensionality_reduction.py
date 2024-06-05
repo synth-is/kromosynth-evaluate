@@ -4,6 +4,7 @@ import pickle as pkl
 import time
 import matplotlib.pyplot as plt
 from umap.parametric_umap import ParametricUMAP, load_ParametricUMAP
+import os
 
 def plot_expected_variance_ratio(pca):
     print('Printing explained variance ratio...')
@@ -75,7 +76,14 @@ def get_umap_projection(features, n_components=2, should_fit=True, evorun_dir=''
     if should_fit:
         print('Fitting UMAP model...')
         umap.fit(features)
-        umap.save(evorun_dir + 'umap_model')
+
+        umap_model_path = evorun_dir + 'umap_model'
+        print('Saving UMAP model to disk...', umap_model_path)
+        print('os.path.dirname(umap_model_path)', os.path.dirname(umap_model_path))
+        if not os.path.exists(umap_model_path):
+            print('Creating directory for UMAP model...', os.path.dirname(umap_model_path))
+            os.makedirs(umap_model_path)
+        umap.save(umap_model_path)
     else:
         # assume that the UMAP model has been saved to disk - TODO: throw an error if it hasn't?
         umap = load_ParametricUMAP(evorun_dir + 'umap_model')

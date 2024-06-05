@@ -34,15 +34,25 @@ async def socket_server(websocket, path):
         start = time.time()
         reference_embedding_path = query_params.get('reference_embedding_path', [None])[0]
         reference_embedding_key = query_params.get('reference_embedding_key', [None])[0]
-        if reference_embedding_path is not None and os.path.exists(reference_embedding_path) and not reference_embeddings[reference_embedding_path]:
+        if reference_embedding_path is not None and os.path.exists(reference_embedding_path) and reference_embedding_path not in reference_embeddings:
             print(f"Loading reference embeddings from {reference_embedding_path}")
-            reference_embeddings[reference_embedding_path] = np.load(reference_embedding_path, allow_pickle=True).item()
+            # reference_embeddings[reference_embedding_path] = np.load(reference_embedding_path, allow_pickle=False).item()
+            # read JSON file
+            with open(reference_embedding_path, 'r') as f:
+                reference_embeddings[reference_embedding_path] = json.load(f)
         query_embedding = json.loads(message)  # receive JSON
         print(f"embeddings shape: {np.array(query_embedding).shape}")
-        reference_embedding = reference_embeddings[reference_embedding_path][reference_embedding_key]
+        # if reference_embedding_key contains a comma, it means that we are looking for multiple embeddings, which should be concatenated
+        if ',' in reference_embedding_key:
+            reference_embedding_keys = reference_embedding_key.split(',')
+            reference_embedding = np.concatenate([reference_embeddings[reference_embedding_path][key] for key in reference_embedding_keys], axis=0)
+        else:
+            reference_embedding = reference_embeddings[reference_embedding_path][reference_embedding_key]
         if request_path == '/cosine':
             print("Calculating cosine distance for embedding")
-            fitness = cosine(query_embedding, reference_embedding)
+            fitness = 1 - cosine(query_embedding, reference_embedding)
+
+            print('fitness:', fitness)
 
             # the above score is apparently longdouble, and serialising it via JSON is fine on macOS (M1)
             # but errors out in a Linux environment (e.g. Fox HPC), and the following conversion solves that issue:
@@ -53,7 +63,7 @@ async def socket_server(websocket, path):
 
         end = time.time()
 
-        print('Time taken to evaluate fitness (FAD):', end - start)
+        print('Time taken to evaluate fitness (ref_features):', end - start)
 
     except Exception as e:
         print('quality: Exception', e)
@@ -97,7 +107,7 @@ if args.host_info_file:
 
 MAX_MESSAGE_SIZE = 100 * 1024 * 1024  # 100MB
 
-print('Starting quality (FAD) WebSocket server at ws://{}:{}'.format(HOST, PORT))
+print('Starting quality ref features WebSocket server at ws://{}:{}'.format(HOST, PORT))
 
 # Start the WebSocket server with supplied command line arguments
 start_server = websockets.serve(socket_server, 

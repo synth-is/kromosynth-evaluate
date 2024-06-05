@@ -137,10 +137,11 @@ async def socket_server(websocket, path):
                     audio_data = np.array(audio_data)
                     embeddings = np.array([]) # just to keep the code running
                     # array of manually defined features names from a comma separated string in the query parameter
-                    feature_names = query_params.get('features', [''])[0].split(',')
+                    features_type = query_params.get('features', [''])[0]
+                    feature_names = features_type.split(',')
                     features = []
                     features_stdv = []
-                    features_type = feature_names
+                    
                     # add each feature to the features array
                     for feature_name in feature_names:
                         if feature_name == 'spectral_centroid':
@@ -227,7 +228,7 @@ async def socket_server(websocket, path):
             # print('MFCC features extracted:', features)
 
             end = time.time()
-            print('features_mfcc: Time taken to extract features:', end - start)
+            print('features: Time taken to extract features:', end - start)
 
             # if features is a numpy array, convert it to a list
             if isinstance(features, np.ndarray):

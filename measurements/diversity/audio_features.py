@@ -289,7 +289,13 @@ def get_openl3_embeddings(audio_data, sample_rate):
 def get_weighted_mean_stdv_nomalized( features, energy, sample_rate, normalize_by_nyquist=True ):
     # Compute the weighted mean of the features
     # (weighted by the energy of each frame)
-    weighted_mean_features = np.sum(features * energy) / np.sum(energy)
+    
+    # if energy is all zero values, ensure not dividing by zero
+    if np.sum(energy) == 0:
+        print('Warning: energy is all zero values')
+        return 0, 0
+    else:
+        weighted_mean_features = np.sum(features * energy) / np.sum(energy)
 
     # Compute the weighted standard deviation of the features
     # First, computes the deviations from the mean
@@ -301,6 +307,9 @@ def get_weighted_mean_stdv_nomalized( features, energy, sample_rate, normalize_b
 
     print('Weighted mean of features:', weighted_mean_features)
     print('Weighted standard deviation of features:', weighted_std_deviation_features)
+
+    if np.isnan(weighted_mean_features):
+        print('Warning: weighted mean is NaN')
 
     if normalize_by_nyquist:
         # Compute the max possible feature (approximation)
