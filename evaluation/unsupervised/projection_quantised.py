@@ -139,7 +139,7 @@ parser.add_argument('--force-host', type=bool, default=False, help='Force the ho
 parser.add_argument('--port', type=int, default=8080, help='Port number to run the WebSocket server on.')
 parser.add_argument('--dimensions', type=int, default=2, help='Number of dimensions to reduce to.')
 parser.add_argument('--dimension-cells', type=int, default=10, help='Number of cells in each dimension.')
-parser.add_argument('--process-title', type=str, default='projection_pca_quantised', help='Process title to use.')
+parser.add_argument('--process-title', type=str, default='projection_quantised', help='Process title to use.')
 parser.add_argument('--host-info-file', type=str, default='', help='Host information file to use.')
 parser.add_argument('--plot-variance-ratio', type=bool, default=False, help='Plot the variance ratio of the PCA model.')
 args = parser.parse_args()

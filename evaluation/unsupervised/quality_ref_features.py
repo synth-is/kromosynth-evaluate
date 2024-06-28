@@ -49,8 +49,8 @@ async def socket_server(websocket, path):
         else:
             reference_embedding = reference_embeddings[reference_embedding_path][reference_embedding_key]
         if request_path == '/cosine':
-            print("Calculating cosine distance for embedding")
-            fitness = 1 - cosine(query_embedding, reference_embedding)
+            cosine_dissimilarity = cosine(query_embedding, reference_embedding)
+            fitness = 1 - (cosine_dissimilarity / 2)
 
             print('fitness:', fitness)
 
