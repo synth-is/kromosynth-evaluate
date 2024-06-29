@@ -71,6 +71,7 @@ def get_pca_projection(features, n_components=2, should_fit=True, evorun_dir='',
 def get_umap_projection(features, n_components=2, should_fit=True, evorun_dir=''):
     umap = ParametricUMAP(
         n_components=n_components,
+
         # autoencoder_loss = True, # TODO: how to use this? https://umap-learn.readthedocs.io/en/latest/parametric_umap.html#autoencoding-umap
     )
     if should_fit:
@@ -90,6 +91,10 @@ def get_umap_projection(features, n_components=2, should_fit=True, evorun_dir=''
 
     transformed = umap.transform(features)
     # transformed = umap.fit_transform(features)
+
+    # release the memory
+
+
 
     return transformed
 

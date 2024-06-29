@@ -1,6 +1,8 @@
 # 2: websocket server for mood classification audio data
 # - https://essentia.upf.edu/models.html 
 
+# TODO this might be better placed within supervised/ in the directory structure
+
 import asyncio
 import websockets
 import json
