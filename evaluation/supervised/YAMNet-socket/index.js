@@ -28,7 +28,14 @@ const wss = new WebSocketServer({ host, port });
 // TODO: read from parameters
 const classificationGraphModel = "yamnet";
 console.log("classificationGraphModel:",classificationGraphModel);
-const modelUrl = argv.modelUrl;
+let modelUrl = argv.modelUrl;
+// if modelUrl contains the string "localscratch/<job-ID>", replace it with the actual path
+if( modelUrl && modelUrl.includes("localscratch") ) {
+  // get the job-ID from from the environment variable SLURM_JOB_ID
+  const jobId = process.env.SLURM_JOB_ID;
+  console.log("Replacing localscratch/<job-ID> with localscratch/"+jobId+" in modelUrl");
+  modelUrl = modelUrl.replace("localscratch/<job-ID>", `localscratch/${jobId}`);
+}
 console.log("modelUrl:",modelUrl);
 const useGPU = argv.useGPU;;
 console.log("useGPU:",useGPU);

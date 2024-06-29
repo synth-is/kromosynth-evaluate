@@ -80,6 +80,9 @@ print("args.quality_methods", args.quality_methods)
 QUALITY_METHODS = args.quality_methods.split(',')
 
 MODELS_PATH = args.models_path
+# if MODELS_PATH contains "/localscratch/<job-ID>" then replace the job-ID with the environment variable SLURM_JOB_ID
+if '/localscratch/' in MODELS_PATH:
+    MODELS_PATH = MODELS_PATH.replace('/localscratch/<job-ID>', '/localscratch/' + os.environ.get('SLURM_JOB_ID') )
 
 # set PROCESS_TITLE as either the environment variable or the default value
 PROCESS_TITLE = os.environ.get('PROCESS_TITLE', args.process_title)

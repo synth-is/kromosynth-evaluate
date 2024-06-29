@@ -57,6 +57,9 @@ async def socket_server(websocket, path):
             background_embds_path = query_params.get('background_embds_path', [None])[0]
             eval_embds_path = query_params.get('eval_embds_path', [None])[0]
             ckpt_dir = query_params.get('ckpt_dir', [None])[0]
+            # if ckpt_dir contains "/localscratch/<job-ID>" then replace the job-ID with the environment variable SLURM_JOB_ID
+            if '/localscratch/' in ckpt_dir:
+                ckpt_dir = ckpt_dir.replace('/localscratch/<job-ID>', '/localscratch/' + os.environ.get('SLURM_JOB_ID') )
 
             embeddingsList = []
             if measure_collective_performance and eval_embds_path is not None and os.path.exists(eval_embds_path):
