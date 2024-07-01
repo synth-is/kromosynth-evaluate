@@ -29,7 +29,7 @@ const wss = new WebSocketServer({ host, port });
 const classificationGraphModel = "yamnet";
 console.log("classificationGraphModel:",classificationGraphModel);
 let modelUrl = argv.modelUrl;
-// if modelUrl contains the string "localscratch/<job-ID>", replace it with the actual path
+// if modelUrl contains the string "localscratch/<job-ID>", replace the ID with the SLURM job ID
 if( modelUrl && modelUrl.includes("localscratch") ) {
   // get the job-ID from from the environment variable SLURM_JOB_ID
   const jobId = process.env.SLURM_JOB_ID;
