@@ -58,6 +58,9 @@ async def socket_server(websocket, path):
                 features_type = 'mfcc'
             else:
                 ckpt_dir = query_params.get('ckpt_dir', [None])[0]
+                # if ckpt_dir contains "/localscratch/<job-ID>" then replace the job-ID with the environment variable SLURM_JOB_ID
+                if '/localscratch/' in ckpt_dir:
+                    ckpt_dir = ckpt_dir.replace('/localscratch/<job-ID>', '/localscratch/' + os.environ.get('SLURM_JOB_ID') )
                 print('ckpt_dir:', ckpt_dir)
                 if request_path == '/vggish':
                     audio_data = [audio_data]
@@ -70,7 +73,7 @@ async def socket_server(websocket, path):
                     features_type = 'vggish'
                 elif request_path == '/vggishessentia':
                     print('Extracting VGGish embeddings using Essentia...')
-                    embeddings = get_vggish_embeddings_essentia(audio_data, sample_rate, MODELS_PATH)
+                    embeddings = get_vggish_embeddings_essentia(audio_data, sample_rate, )
                     # features = get_feature_means_stdv_firstorderdifference_concatenated(embeddings.T)
                     features = np.mean(embeddings, axis=0)
                     features_type = 'vggish-essentia'
@@ -272,6 +275,9 @@ PORT = int(os.environ.get('PORT', args.port))
 HOST = args.host
 
 MODELS_PATH = args.models_path
+# if MODELS_PATH contains "/localscratch/<job-ID>" then replace the job-ID with the environment variable SLURM_JOB_ID
+if '/localscratch/' in MODELS_PATH:
+    MODELS_PATH = MODELS_PATH.replace('/localscratch/<job-ID>', '/localscratch/' + os.environ.get('SLURM_JOB_ID') )
 
 # if the host-info-file is not empty
 if args.host_info_file:
