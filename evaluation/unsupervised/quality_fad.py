@@ -28,7 +28,7 @@ from urllib.parse import urlparse, parse_qs
 import sys
 sys.path.append('../..')
 from measurements.quality.quality_fad import get_fad_score, get_eucid_distance
-from util import filepath_to_port
+from evaluation.util import filepath_to_port
 
 def str_to_bool(s):
     return s.lower() in ['true', '1', 't', 'y', 'yes']

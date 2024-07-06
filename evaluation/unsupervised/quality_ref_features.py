@@ -15,7 +15,7 @@ from scipy.spatial.distance import cosine
 
 import sys
 sys.path.append('../..')
-from util import filepath_to_port
+from evaluation.util import filepath_to_port
 
 def str_to_bool(s):
     return s.lower() in ['true', '1', 't', 'y', 'yes']

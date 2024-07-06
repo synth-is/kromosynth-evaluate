@@ -1,6 +1,8 @@
 # 2: websocket server for mood classification audio data
 # - https://essentia.upf.edu/models.html 
 
+# TODO this might be better placed within supervised/ in the directory structure
+
 import asyncio
 import websockets
 import json
@@ -9,14 +11,12 @@ import numpy as np
 import os
 from setproctitle import setproctitle
 import time
+from urllib.parse import urlparse, parse_qs
 
 # import the function get_mfcc_feature_means_stdv_firstorderdifference_concatenated from measurements/diversity/mfcc.py
 import sys
 sys.path.append('../..')
-from measurements.quality.quality_mood import (
-  mood_aggressive, mood_happy, mood_non_happy, mood_party, mood_relaxed, mood_sad, mood_acoustic, mood_electronic,
-  get_top_mood
-)
+from measurements.quality.quality_instrumentation import nsynth_tagged_predictions, yamnet_tagged_predictions, mtg_jamendo_instrument_predictions
 from evaluation.util import filepath_to_port
 
 async def socket_server(websocket, path):
@@ -28,48 +28,42 @@ async def socket_server(websocket, path):
           start = time.time()
           # Received binary message (assume it's an audio buffer)
           audio_data = message
-          print('Audio data received for fitness evaluation, by sound quality (SQ) metrics')
+          print('Audio data received for fitness evaluation, by instrumentation metrics')
           # convert the audio data to a numpy array
           audio_data = np.frombuffer(audio_data, dtype=np.float32)
+
+          url_components = urlparse(path)
+          query_params = parse_qs(url_components.query)  # This will hold the query parameters as a dict
+          classifiers = query_params.get('classifiers', ['nsynth'])[0]
+          classifiers_list = classifiers.split(',')
           
-          fitness_percentages = []
-          for method in QUALITY_METHODS:
-            if method == 'mood_aggressive':
-              fitness_percentages.append(mood_aggressive(audio_data, MODELS_PATH))
-            elif method == 'mood_happy':
-              fitness_percentages.append(mood_happy(audio_data, MODELS_PATH))
-            elif method == 'mood_non_happy':
-              fitness_percentages.append(mood_non_happy(audio_data, MODELS_PATH))
-            elif method == 'mood_party':
-              fitness_percentages.append(mood_party(audio_data, MODELS_PATH))
-            elif method == 'mood_relaxed':
-              fitness_percentages.append(mood_relaxed(audio_data, MODELS_PATH))
-            elif method == 'mood_sad':
-              fitness_percentages.append(mood_sad(audio_data, MODELS_PATH))
-            elif method == 'mood_acoustic':
-              fitness_percentages.append(mood_acoustic(audio_data, MODELS_PATH))
-            elif method == 'mood_electronic':
-              fitness_percentages.append(mood_electronic(audio_data, MODELS_PATH))
-            elif method == 'top_mood':
-               fitness_result = get_top_mood(audio_data, MODELS_PATH)
-               fitness_value = { 'top_score_class': fitness_result[0], 'top_score': fitness_result[1]}
+          tagged_predictions = {}
+          for method in classifiers_list:
+            if method == 'nsynth':
+              nsynth_dict = nsynth_tagged_predictions(audio_data, MODELS_PATH)
+              # merge with the tagged_predictions dictionary
+              tagged_predictions = {**tagged_predictions, **nsynth_dict}
+            elif method == 'yamnet':
+              yamnet_dict = yamnet_tagged_predictions(audio_data, MODELS_PATH)
+              # merge with the tagged_predictions dictionary
+              tagged_predictions = {**tagged_predictions, **yamnet_dict}
+            elif method == 'mtg_jamendo_instrument':
+              mtg_jamendo_dict = mtg_jamendo_instrument_predictions(audio_data, MODELS_PATH)
+              # merge with the tagged_predictions dictionary
+              tagged_predictions = {**tagged_predictions, **mtg_jamendo_dict}
 
-          # print('sound quality percentages (mood):', fitness_percentages)
-
-          if fitness_percentages:
-            # calculate the average of the fitness percentages
-            fitness_value = sum(fitness_percentages) / len(fitness_percentages)
-
-          print('Fitness value (SQ):', fitness_value)
+            # TODO: https://essentia.upf.edu/models.html#nsynth-reverb ; analyse if elites in that class have more Convolver nodes in their graphs
+            # - https://essentia.upf.edu/models.html#mtg-jamendo-instrument
+            # - etc.: analyse how often instrument elites have parents from non-instrument audio-event classes
 
           end = time.time()
-          print('quality_mood: Time taken to evaluate fitness:', end - start)
+          print('nsynth_instrument: Time taken to evaluate fitness:', end - start)
 
-          response = {'status': 'received standalone audio', 'fitness': fitness_value}
+          response = {'status': 'received standalone audio', 'taggedPredictions': tagged_predictions} # https://stackoverflow.com/questions/53082708/typeerror-object-of-type-float32-is-not-json-serializable#comment93577758_53082860
           await websocket.send(json.dumps(response))
-    except:
-        print('quality_mood: Exception')
-        response = {'status': 'ERROR'}
+    except Exception as e:
+        print('nsynth_instrument: Exception', e)
+        response = {'status': 'ERROR' + str(e)}
         await websocket.send(json.dumps(response))
 
 # Parse command line arguments
@@ -78,17 +72,12 @@ parser.add_argument('--host', type=str, default='localhost', help='Host to run t
 parser.add_argument('--force-host', type=bool, default=False, help='Force the host to be the one specified in the host argument.') # e.g for the ROBIN-HPC
 parser.add_argument('--port', type=int, default=8080, help='Port number to run the WebSocket server on.')
 parser.add_argument('--sample-rate', type=int, default=48000, help='Sample rate of the audio data.')
-parser.add_argument('--quality-methods', type=str, default='mood_happy', help='Quality methods to use.')
 parser.add_argument('--process-title', type=str, default='quality_mood', help='Process title to use.')
 parser.add_argument('--models-path', type=str, default='../../measurements/models', help='Path to classification models.')
 parser.add_argument('--host-info-file', type=str, default='', help='Host information file to use.')
 args = parser.parse_args()
 
 sample_rate = args.sample_rate
-
-# parse the comma separted list of quality methods
-print("args.quality_methods", args.quality_methods)
-QUALITY_METHODS = args.quality_methods.split(',')
 
 MODELS_PATH = args.models_path
 # if MODELS_PATH contains "/localscratch/<job-ID>" then replace the job-ID with the environment variable SLURM_JOB_ID

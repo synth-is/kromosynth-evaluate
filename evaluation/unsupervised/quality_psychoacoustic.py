@@ -19,7 +19,7 @@ from measurements.quality.quality_psychoacoustic import (
   equal_loudness_contour_score_average, equal_loudness_contour_score_median, equal_loudness_contour_score_95th_percentile,
   roughness_score_scaled_by_loudness
 )
-from util import filepath_to_port
+from evaluation.util import filepath_to_port
 
 async def socket_server(websocket, path):
     try:
