@@ -30,7 +30,7 @@ from measurements.diversity.audio_features import (
     get_chroma_stft_mean_stdv, get_mel_spectrogram_mean_stdv, get_rms_mean_stdv, get_spectral_bandwidth_mean_stdv,
     get_spectral_contrast_mean_stdv, get_spectral_flatness_mean_stdv, get_spectral_flux_mean_stdv, get_spectral_rolloff_mean_stdv
 )
-from util import filepath_to_port
+from evaluation.util import filepath_to_port
 
 async def socket_server(websocket, path):
     # Parse the path and query components from the URL

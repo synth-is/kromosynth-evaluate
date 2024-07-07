@@ -16,7 +16,7 @@ from urllib.parse import urlparse, parse_qs
 import sys
 sys.path.append('../..')
 from measurements.quality.quality_ref_buffer import get_cdpam_distance, get_multi_resolution_spectral_loss
-from util import filepath_to_port
+from evaluation.util import filepath_to_port
 import cdpam
 
 def str_to_bool(s):

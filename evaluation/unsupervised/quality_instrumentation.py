@@ -16,7 +16,7 @@ import time
 import sys
 sys.path.append('../..')
 from measurements.quality.quality_instrumentation import nsynth_instrument_mean, nsynth_instrument_topscore_and_index_and_class
-from util import filepath_to_port
+from evaluation.util import filepath_to_port
 
 async def socket_server(websocket, path):
     try:

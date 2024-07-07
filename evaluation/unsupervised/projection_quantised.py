@@ -13,7 +13,7 @@ import sys
 sys.path.append('../..')
 from measurements.diversity.dimensionality_reduction import get_pca_projection, get_umap_projection
 from measurements.diversity.util.discretise import vector_to_index
-from util import filepath_to_port
+from evaluation.util import filepath_to_port
 
 def remove_duplicates_keep_highest(discretised_projection, fitness_values):
     if len(discretised_projection) != len(fitness_values):

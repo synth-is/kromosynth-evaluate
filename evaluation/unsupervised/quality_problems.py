@@ -17,7 +17,7 @@ from measurements.quality.quality_control import (
   click_count_percentage, discontinuity_count_percentage, gaps_count_percentage, hum_precence_percentage, saturation_percentage, signal_to_noise_percentage_of_excellence, true_peak_clipping_percentage, noise_burst_percentage, compressibility_percentage,
   energy
 )
-from util import filepath_to_port
+from evaluation.util import filepath_to_port
 
 async def socket_server(websocket, path):
     try:
