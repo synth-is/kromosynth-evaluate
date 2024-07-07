@@ -9,7 +9,7 @@
   "author": "Björn Þór Jónsson <bthj@uio.no> (synth.is)",
   "license": "AGPL-3.0-or-later",
   "dependencies": {
-    "kromosynth": "^1.0.28",
+    "kromosynth": "^1.0.29",
     "minimist": "^1.2.8",
     "ws": "^8.14.1"
   },
