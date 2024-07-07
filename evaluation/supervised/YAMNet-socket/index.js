@@ -45,12 +45,12 @@ wss.on("connection", (ws) => {
   ws.on("message", async (message) => {
     const buffer = new Uint8Array( message );
     const channelData = new Float32Array( buffer.buffer );
-    console.log(`Predicting audio classes from  ${channelData.length} samples`);
+    console.log(`Predicting audio classes from  ${channelData.length} samples, classificationGraphModel: ${classificationGraphModel}, modelUrl: ${modelUrl}, useGPU: ${useGPU}`);
     const predictions = await getAudioClassPredictions(
       channelData,
       classificationGraphModel, modelUrl, useGPU
     );
-    // console.log(predictions);
+    // console.log("predictions:", predictions);
     ws.send(JSON.stringify(predictions));
   });
 });
