@@ -38,16 +38,16 @@ async def socket_server(websocket, path):
           
           tagged_predictions = {}
           for method in classifiers_list:
+            # instruments
             if method == 'nsynth':
               nsynth_dict = nsynth_tagged_predictions(audio_data, MODELS_PATH)
               # merge with the tagged_predictions dictionary
               tagged_predictions = {**tagged_predictions, **nsynth_dict}
-            elif method == 'yamnet':
-              yamnet_dict = yamnet_tagged_predictions(audio_data, MODELS_PATH)
-              tagged_predictions = {**tagged_predictions, **yamnet_dict}
             elif method == 'mtg_jamendo_instrument':
               mtg_jamendo_dict = mtg_jamendo_instrument_predictions(audio_data, MODELS_PATH)
               tagged_predictions = {**tagged_predictions, **mtg_jamendo_dict}
+
+            # instrumentation
             elif method == 'music_loop_instrument_role':
               music_loop_dict = music_loop_instrument_role_predictions(audio_data, MODELS_PATH)
               tagged_predictions = {**tagged_predictions, **music_loop_dict}
@@ -75,6 +75,11 @@ async def socket_server(websocket, path):
             elif method == 'nsynth_reverb':
               nsynth_reverb_dict = nsynth_reverb_predictions(audio_data, MODELS_PATH)
               tagged_predictions = {**tagged_predictions, **nsynth_reverb_dict}
+
+            # audio events
+            elif method == 'yamnet':
+              yamnet_dict = yamnet_tagged_predictions(audio_data, MODELS_PATH)
+              tagged_predictions = {**tagged_predictions, **yamnet_dict}
 
           end = time.time()
           print('classification: Time taken to evaluate fitness:', end - start)
