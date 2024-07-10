@@ -1,8 +1,3 @@
-# 2: websocket server for mood classification audio data
-# - https://essentia.upf.edu/models.html 
-
-# TODO this might be better placed within supervised/ in the directory structure
-
 import asyncio
 import websockets
 import json
@@ -16,7 +11,11 @@ from urllib.parse import urlparse, parse_qs
 # import the function get_mfcc_feature_means_stdv_firstorderdifference_concatenated from measurements/diversity/mfcc.py
 import sys
 sys.path.append('../..')
-from measurements.quality.quality_instrumentation import nsynth_tagged_predictions, yamnet_tagged_predictions, mtg_jamendo_instrument_predictions
+from measurements.quality.quality_instrumentation import (
+  nsynth_tagged_predictions, yamnet_tagged_predictions, mtg_jamendo_instrument_predictions,
+  music_loop_instrument_role_predictions, mood_acoustic_predictions, mood_electronic_predictions, voice_instrumental_predictions, voice_gender_predictions,
+  timbre_predictions, nsynth_acoustic_electronic_predictions, nsynth_bright_dark_predictions, nsynth_reverb_predictions
+)
 from evaluation.util import filepath_to_port
 
 async def socket_server(websocket, path):
@@ -45,19 +44,40 @@ async def socket_server(websocket, path):
               tagged_predictions = {**tagged_predictions, **nsynth_dict}
             elif method == 'yamnet':
               yamnet_dict = yamnet_tagged_predictions(audio_data, MODELS_PATH)
-              # merge with the tagged_predictions dictionary
               tagged_predictions = {**tagged_predictions, **yamnet_dict}
             elif method == 'mtg_jamendo_instrument':
               mtg_jamendo_dict = mtg_jamendo_instrument_predictions(audio_data, MODELS_PATH)
-              # merge with the tagged_predictions dictionary
               tagged_predictions = {**tagged_predictions, **mtg_jamendo_dict}
-
-            # TODO: https://essentia.upf.edu/models.html#nsynth-reverb ; analyse if elites in that class have more Convolver nodes in their graphs
-            # - https://essentia.upf.edu/models.html#mtg-jamendo-instrument
-            # - etc.: analyse how often instrument elites have parents from non-instrument audio-event classes
+            elif method == 'music_loop_instrument_role':
+              music_loop_dict = music_loop_instrument_role_predictions(audio_data, MODELS_PATH)
+              tagged_predictions = {**tagged_predictions, **music_loop_dict}
+            elif method == 'mood_acoustic':
+              mood_acoustic_dict = mood_acoustic_predictions(audio_data, MODELS_PATH)
+              tagged_predictions = {**tagged_predictions, **mood_acoustic_dict}
+            elif method == 'mood_electronic':
+              mood_electronic_dict = mood_electronic_predictions(audio_data, MODELS_PATH)
+              tagged_predictions = {**tagged_predictions, **mood_electronic_dict}
+            elif method == 'voice_instrumental':
+              voice_instrumental_dict = voice_instrumental_predictions(audio_data, MODELS_PATH)
+              tagged_predictions = {**tagged_predictions, **voice_instrumental_dict}
+            elif method == 'voice_gender':
+              voice_gender_dict = voice_gender_predictions(audio_data, MODELS_PATH)
+              tagged_predictions = {**tagged_predictions, **voice_gender_dict}
+            elif method == 'timbre':
+              timbre_dict = timbre_predictions(audio_data, MODELS_PATH)
+              tagged_predictions = {**tagged_predictions, **timbre_dict}
+            elif method == 'nsynth_acoustic_electronic':
+              nsynth_acoustic_electronic_dict = nsynth_acoustic_electronic_predictions(audio_data, MODELS_PATH)
+              tagged_predictions = {**tagged_predictions, **nsynth_acoustic_electronic_dict}
+            elif method == 'nsynth_bright_dark':
+              nsynth_bright_dark_dict = nsynth_bright_dark_predictions(audio_data, MODELS_PATH)
+              tagged_predictions = {**tagged_predictions, **nsynth_bright_dark_dict}
+            elif method == 'nsynth_reverb':
+              nsynth_reverb_dict = nsynth_reverb_predictions(audio_data, MODELS_PATH)
+              tagged_predictions = {**tagged_predictions, **nsynth_reverb_dict}
 
           end = time.time()
-          print('nsynth_instrument: Time taken to evaluate fitness:', end - start)
+          print('classification: Time taken to evaluate fitness:', end - start)
 
           response = {'status': 'received standalone audio', 'taggedPredictions': tagged_predictions} # https://stackoverflow.com/questions/53082708/typeerror-object-of-type-float32-is-not-json-serializable#comment93577758_53082860
           await websocket.send(json.dumps(response))
@@ -72,7 +92,7 @@ parser.add_argument('--host', type=str, default='localhost', help='Host to run t
 parser.add_argument('--force-host', type=bool, default=False, help='Force the host to be the one specified in the host argument.') # e.g for the ROBIN-HPC
 parser.add_argument('--port', type=int, default=8080, help='Port number to run the WebSocket server on.')
 parser.add_argument('--sample-rate', type=int, default=48000, help='Sample rate of the audio data.')
-parser.add_argument('--process-title', type=str, default='quality_mood', help='Process title to use.')
+parser.add_argument('--process-title', type=str, default='classification', help='Process title to use.')
 parser.add_argument('--models-path', type=str, default='../../measurements/models', help='Path to classification models.')
 parser.add_argument('--host-info-file', type=str, default='', help='Host information file to use.')
 args = parser.parse_args()
@@ -109,7 +129,7 @@ if args.host_info_file:
 
 MAX_MESSAGE_SIZE = 100 * 1024 * 1024  # 100MB
 
-print('Starting fitness / sound quality (mood) WebSocket server at ws://{}:{}'.format(HOST, PORT))
+print('Starting classification WebSocket server at ws://{}:{}'.format(HOST, PORT))
 # Start the WebSocket server with supplied command line arguments
 start_server = websockets.serve(socket_server, 
                                 HOST, 
