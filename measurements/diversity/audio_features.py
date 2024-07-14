@@ -651,8 +651,40 @@ def get_spectral_contrast_mean_stdv(audio_data, sample_rate, frame_length=0.025,
     return spectral_contrast_mean, spectral_contrast_stdv
 
 
+# Inspired by: https://doi.org/10.3390/app112411926 :
+# "... basic statistics (mean, standard deviation, minimum and maximum), which are applied to both the raw features and their first derivative. 
+# For example, for thirteen dimensions in the frame-level feature, this renders a vector of 104 dimensions."
+def compute_feature_statistics(feature_matrix):
+    """
+    Compute the mean, standard deviation, minimum, and maximum for each feature dimension
+    and for the first derivatives of the feature dimensions. Returns a combined 
+    statistics vector of size (num_features * 8).
 
-
+    :param feature_matrix: A NumPy array with shape (num_features, num_time_steps).
+    :return: A NumPy array containing all combined statistics.
+    """
+    num_features, num_time_steps = feature_matrix.shape
+    
+    # Compute the statistics for the feature values
+    means = np.mean(feature_matrix, axis=1)
+    std_devs = np.std(feature_matrix, axis=1, ddof=1)
+    minimums = np.min(feature_matrix, axis=1)
+    maximums = np.max(feature_matrix, axis=1)
+    
+    # Calculate the first derivatives along the time axis
+    derivatives = np.diff(feature_matrix, axis=1)
+    
+    # Compute the statistics for the first derivatives
+    der_means = np.mean(derivatives, axis=1)
+    der_std_devs = np.std(derivatives, axis=1, ddof=1)
+    der_minimums = np.min(derivatives, axis=1)
+    der_maximums = np.max(derivatives, axis=1)
+    
+    # Combine the statistics into a single vector
+    statistics_vector = np.concatenate((means, std_devs, minimums, maximums,
+                                        der_means, der_std_devs, der_minimums, der_maximums))
+    
+    return statistics_vector
 
 
 # TODO special iteration on structural features

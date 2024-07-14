@@ -28,7 +28,8 @@ from measurements.diversity.audio_features import (
     get_spectral_spread, get_spectral_skewness, get_spectral_kurtosis, get_spectral_decrease, get_spectral_slope, get_spectral_crest_factor, get_tonal_power_ratio, get_max_autocorrelation,
     get_spectral_rolloff_mean_stdv, get_zero_crossing_rate_mean_stdv, get_tempo,
     get_chroma_stft_mean_stdv, get_mel_spectrogram_mean_stdv, get_rms_mean_stdv, get_spectral_bandwidth_mean_stdv,
-    get_spectral_contrast_mean_stdv, get_spectral_flatness_mean_stdv, get_spectral_flux_mean_stdv, get_spectral_rolloff_mean_stdv
+    get_spectral_contrast_mean_stdv, get_spectral_flatness_mean_stdv, get_spectral_flux_mean_stdv, get_spectral_rolloff_mean_stdv,
+    compute_feature_statistics
 )
 from evaluation.util import filepath_to_port
 
@@ -56,6 +57,11 @@ async def socket_server(websocket, path):
                 embeddings = get_mfcc_features(audio_data, sample_rate)
                 features = get_feature_means_stdv_firstorderdifference_concatenated(embeddings)
                 features_type = 'mfcc'
+            elif request_path == '/mfcc-statistics':
+                print('Extracting MFCC statistics...')
+                embeddings = get_mfcc_features(audio_data, sample_rate)
+                features = compute_feature_statistics(embeddings)
+                features_type = 'mfcc-statistics'
             else:
                 ckpt_dir = query_params.get('ckpt_dir', [None])[0]
                 # if ckpt_dir contains "/localscratch/<job-ID>" then replace the job-ID with the environment variable SLURM_JOB_ID
@@ -73,7 +79,7 @@ async def socket_server(websocket, path):
                     features_type = 'vggish'
                 elif request_path == '/vggishessentia':
                     print('Extracting VGGish embeddings using Essentia...')
-                    embeddings = get_vggish_embeddings_essentia(audio_data, sample_rate, )
+                    embeddings = get_vggish_embeddings_essentia(audio_data, sample_rate, MODELS_PATH)
                     # features = get_feature_means_stdv_firstorderdifference_concatenated(embeddings.T)
                     features = np.mean(embeddings, axis=0)
                     features_type = 'vggish-essentia'
@@ -85,7 +91,7 @@ async def socket_server(websocket, path):
                     features_type = 'pann'
                 elif request_path == '/panns-inference':
                     print('Extracting PANN embeddings using inference...')
-                    embeddings = get_pann_embeddings_panns_inference(audio_data, sample_rate, ckpt_dir)
+                    embeddings = get_pann_embeddings_panns_inference(audio_data, sample_rate, ckpt_dir+'/panns_data/Cnn14_mAP=0.431.pth')
                     features = embeddings[0]
                     features_type = 'panns-inference'
                 elif request_path == '/clap':
