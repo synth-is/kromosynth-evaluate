@@ -19,7 +19,7 @@ if( argv.hostInfoFilePath ) {
   port = argv.port || process.env.PORT || '40051';
   host = "0.0.0.0";
 }
-const processTitle = argv.processTitle || 'kromosynth-evaluation-socket-server';
+const processTitle = argv.processTitle || 'kromosynth-evaluation-socket-server: YAMNet';
 process.title = processTitle;
 process.on('SIGINT', () => process.exit(1)); // so it can be stopped with Ctrl-C
 
@@ -50,6 +50,11 @@ wss.on("connection", (ws) => {
       channelData,
       classificationGraphModel, modelUrl, useGPU
     );
+    // prepend the keys in predictions.taggedPredictions with 'YAM_:'
+    predictions.taggedPredictions = Object.keys(predictions.taggedPredictions).reduce( (acc, key) => {
+      acc[`YAM_${key}`] = predictions.taggedPredictions[key];
+      return acc;
+    }, {});
     // console.log("predictions:", predictions);
     ws.send(JSON.stringify(predictions));
   });
