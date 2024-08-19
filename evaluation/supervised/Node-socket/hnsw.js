@@ -40,7 +40,7 @@ console.log("modelUrl:",modelUrl);
 const spaceName = argv.spaceName || 'cosine';
 
 // number of neighbors to return
-const numNeighbors = argv.numNeighbors || 5;
+let numNeighbors = argv.numNeighbors;
 
 // modelUrl is the path to a folder containing the HNSW index file and a JSON file mapping indexes to keys
 // - the index file is named 'hnswIndex.dat'
@@ -55,11 +55,16 @@ wss.on("connection", (ws) => {
   ws.on("message", async (message) => {
     const messageParsed = JSON.parse(message);
     if( messageParsed.features ) {
+      const startTime = performance.now();
       if( !index ) {
         const numDimensions = messageParsed.features.length
         index = new HierarchicalNSW(spaceName, numDimensions);
         index.readIndexSync( indexPath );
+        if( !numNeighbors ) {
+          numNeighbors = index.getCurrentCount();
+        }
       }
+      console.log(`Searching for ${numNeighbors} nearest neighbors to features of length ${messageParsed.features.length}`);
       const result = index.searchKnn( messageParsed.features, numNeighbors );
       const { neighbors, distances } = result;
       const taggedPredictions = {};
@@ -68,7 +73,9 @@ wss.on("connection", (ws) => {
         // 0 indicates no dissimilarity between vectors (they are the same).
         // 1 indicates that the vectors are orthogonal (uncorrelated).
         // 2 indicates that the vectors are diametrically opposed.
-        taggedPredictions[indexToKey[neighbor]] = 1 - (distances[idx] / 2); 
+        // console.log(`distances[${idx}]:`, distances[idx]);
+        // taggedPredictions[indexToKey[neighbor]] = 1 - (distances[idx] / 2); 
+        taggedPredictions[indexToKey[neighbor]] = distances[idx]; 
       });
       // = neighbors.map( (neighbor, idx) => {
       //   return {
@@ -76,6 +83,8 @@ wss.on("connection", (ws) => {
       //   }
       // } );
       const wsResponse = { taggedPredictions };
+      const endTime = performance.now();
+      console.log(`HNSW Prediction took ${endTime - startTime} ms`);
       ws.send(JSON.stringify(wsResponse));
     } else if( messageParsed.getKeys ) {
       ws.send(JSON.stringify(Object.values(indexToKey)));
