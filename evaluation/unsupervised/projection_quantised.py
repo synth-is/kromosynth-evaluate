@@ -77,6 +77,12 @@ async def socket_server(websocket, path):
             projection = get_umap_projection(feature_vectors, dimensions, should_fit, evorun_dir)
             # TODO add reconstruction error to the response (https://gpt.uio.no/chat/439344)
 
+        if should_fit:
+            # delete the entry for the request_path in cell_range_min_for_projection and cell_range_max_for_projection
+            if request_path in cell_range_min_for_projection:
+                del cell_range_min_for_projection[request_path]
+            if request_path in cell_range_max_for_projection:
+                del cell_range_max_for_projection[request_path]
 
         print('projection', projection)
 
