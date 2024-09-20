@@ -8,6 +8,7 @@ import os
 from setproctitle import setproctitle
 import time
 from urllib.parse import urlparse, parse_qs
+import numpy as np
 
 import sys
 sys.path.append('../..')
@@ -60,6 +61,8 @@ async def socket_server(websocket, path):
         feature_vectors = jsonData['feature_vectors']
         should_fit = jsonData['should_fit'] 
         print('should_fit: ', should_fit)
+        calculate_novelty = jsonData['calculate_novelty']
+        print('calculate_novelty: ', calculate_novelty)
         evorun_dir = jsonData['evorun_dir']
 
         url_components = urlparse(path)
@@ -72,10 +75,13 @@ async def socket_server(websocket, path):
                 components_list = list(map(int, pca_components.split(',')))
             else:
                 components_list = []
-            projection = get_pca_projection(feature_vectors, dimensions, should_fit, evorun_dir, plot_variance_ratio, components_list)
+            projection, novelty_scores = get_pca_projection(feature_vectors, dimensions, should_fit, evorun_dir, calculate_novelty, components_list)
         elif request_path == '/umap':
-            projection = get_umap_projection(feature_vectors, dimensions, should_fit, evorun_dir)
+            projection, novelty_scores = get_umap_projection(feature_vectors, dimensions, should_fit, evorun_dir, calculate_novelty)
             # TODO add reconstruction error to the response (https://gpt.uio.no/chat/439344)
+        elif request_path == '/raw':
+            projection = np.array(feature_vectors)
+            novelty_scores = None
 
         if should_fit:
             # delete the entry for the request_path in cell_range_min_for_projection and cell_range_max_for_projection
@@ -114,7 +120,7 @@ async def socket_server(websocket, path):
             print('discretised_vector', discretised_vector)
             discretised_projection.append(discretised_vector)
 
-        response = {'status': 'OK', 'feature_map': discretised_projection}
+        response = {'status': 'OK', 'feature_map': discretised_projection, 'novelty_scores': novelty_scores.tolist() if novelty_scores is not None else None}
         await websocket.send(json.dumps(response))
         
     except Exception as e:
@@ -151,7 +157,7 @@ parser.add_argument('--plot-variance-ratio', type=bool, default=False, help='Plo
 args = parser.parse_args()
 
 dimensions = args.dimensions
-plot_variance_ratio = args.plot_variance_ratio
+# plot_variance_ratio = args.plot_variance_ratio
 
 # set PROCESS_TITLE as either the environment variable or the default value
 PROCESS_TITLE = os.environ.get('PROCESS_TITLE', args.process_title)
