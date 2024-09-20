@@ -14,6 +14,8 @@ import sys
 sys.path.append('../..')
 from measurements.diversity.dimensionality_reduction import get_pca_projection, get_umap_projection
 from measurements.diversity.util.discretise import vector_to_index
+from measurements.diversity.util.metrics_visualiser import MetricsVisualizer
+from measurements.diversity.util.diversity_metrics import calculate_diversity_metrics, perform_cluster_analysis, calculate_performance_spread
 from evaluation.util import filepath_to_port
 
 def remove_duplicates_keep_highest(discretised_projection, fitness_values):
@@ -41,10 +43,7 @@ def remove_duplicates_keep_highest(discretised_projection, fitness_values):
 
     return unique_projection, unique_fitness_values, indices_to_keep_sorted
 
-# TODO: endpoints:
-# - /pca
-# - /two-features
-# - /umap
+visualizer = MetricsVisualizer('/Users/bjornpjo/Downloads')
 
 cell_range_min_for_projection = {}
 cell_range_max_for_projection = {}
@@ -83,6 +82,37 @@ async def socket_server(websocket, path):
             projection = np.array(feature_vectors)
             novelty_scores = None
 
+
+        elif request_path == '/diversity_metrics':
+            generation = jsonData.get('generation', 0)
+            feature_vectors = jsonData['feature_vectors']
+            genotypes = jsonData.get('genotypes', [])
+            stage = jsonData.get('stage', '')  # 'before' or 'after'
+            
+            diversity_metrics = calculate_diversity_metrics(feature_vectors, genotypes)
+            response = {
+                'status': 'OK', 
+                'diversity_metrics': diversity_metrics,
+                'generation': generation,
+                'stage': stage
+            }
+
+        elif request_path == '/cluster_analysis':
+            feature_vectors = jsonData['feature_vectors']
+            cluster_analysis = perform_cluster_analysis(feature_vectors)
+            response = {'status': 'OK', 'cluster_analysis': cluster_analysis}
+
+        elif request_path == '/performance_spread':
+            feature_vectors = jsonData['feature_vectors']
+            fitness_values = jsonData['fitness_values']
+            performance_spread = calculate_performance_spread(feature_vectors, fitness_values)
+            response = {'status': 'OK', 'performance_spread': performance_spread}
+
+        elif request_path == '/visualize_metrics':
+            metrics_history = jsonData.get('metrics_history', {})
+            visualizer.visualize(metrics_history)
+            response = {'status': 'OK', 'message': 'Visualizations created successfully'}
+
         if should_fit:
             # delete the entry for the request_path in cell_range_min_for_projection and cell_range_max_for_projection
             if request_path in cell_range_min_for_projection:
@@ -120,7 +150,8 @@ async def socket_server(websocket, path):
             print('discretised_vector', discretised_vector)
             discretised_projection.append(discretised_vector)
 
-        response = {'status': 'OK', 'feature_map': discretised_projection, 'novelty_scores': novelty_scores.tolist() if novelty_scores is not None else None}
+        if 'response' not in locals(): # endpoints /pca, /umap, /raw - TODO clean up
+            response = {'status': 'OK', 'feature_map': discretised_projection, 'novelty_scores': novelty_scores.tolist() if novelty_scores is not None else None}
         await websocket.send(json.dumps(response))
         
     except Exception as e:
