@@ -65,7 +65,7 @@ async def socket_server(websocket, path):
             else:
                 ckpt_dir = query_params.get('ckpt_dir', [None])[0]
                 # if ckpt_dir contains "/localscratch/<job-ID>" then replace the job-ID with the environment variable SLURM_JOB_ID
-                if '/localscratch/' in ckpt_dir:
+                if ckpt_dir is not None and '/localscratch/' in ckpt_dir:
                     ckpt_dir = ckpt_dir.replace('/localscratch/<job-ID>', '/localscratch/' + os.environ.get('SLURM_JOB_ID') )
                 print('ckpt_dir:', ckpt_dir)
                 if request_path == '/vggish':

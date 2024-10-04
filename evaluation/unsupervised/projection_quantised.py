@@ -15,7 +15,7 @@ sys.path.append('../..')
 from measurements.diversity.dimensionality_reduction import get_pca_projection, get_umap_projection
 from measurements.diversity.util.discretise import vector_to_index
 from measurements.diversity.util.metrics_visualiser import MetricsVisualizer
-from measurements.diversity.util.diversity_metrics import calculate_diversity_metrics, perform_cluster_analysis, calculate_performance_spread
+from measurements.diversity.util.diversity_metrics import calculate_diversity_metrics, perform_cluster_analysis, calculate_performance_spread, calculate_novelty_metric
 from evaluation.util import filepath_to_port
 
 def remove_duplicates_keep_highest(discretised_projection, fitness_values):
@@ -43,8 +43,6 @@ def remove_duplicates_keep_highest(discretised_projection, fitness_values):
 
     return unique_projection, unique_fitness_values, indices_to_keep_sorted
 
-visualizer = MetricsVisualizer('/Users/bjornpjo/Downloads')
-
 cell_range_min_for_projection = {}
 cell_range_max_for_projection = {}
 async def socket_server(websocket, path):
@@ -57,12 +55,13 @@ async def socket_server(websocket, path):
 
         jsonData = json.loads(data)  # receive JSON
 
-        feature_vectors = jsonData['feature_vectors']
-        should_fit = jsonData['should_fit'] 
+        feature_vectors = jsonData.get('feature_vectors', [])
+        should_fit = jsonData.get('should_fit', False)
         print('should_fit: ', should_fit)
-        calculate_novelty = jsonData['calculate_novelty']
-        print('calculate_novelty: ', calculate_novelty)
-        evorun_dir = jsonData['evorun_dir']
+        calculate_surprise = jsonData.get('calculate_surprise', False)
+        calculate_novelty = jsonData.get('calculate_novelty', False)
+        print('calculate_surprise: ', calculate_surprise)
+        evorun_dir = jsonData.get('evorun_dir', '')
 
         url_components = urlparse(path)
         request_path = url_components.path
@@ -74,22 +73,21 @@ async def socket_server(websocket, path):
                 components_list = list(map(int, pca_components.split(',')))
             else:
                 components_list = []
-            projection, novelty_scores = get_pca_projection(feature_vectors, dimensions, should_fit, evorun_dir, calculate_novelty, components_list)
+            projection, surprise_scores = get_pca_projection(feature_vectors, dimensions, should_fit, evorun_dir, calculate_surprise, components_list)
         elif request_path == '/umap':
-            projection, novelty_scores = get_umap_projection(feature_vectors, dimensions, should_fit, evorun_dir, calculate_novelty)
+            projection, surprise_scores = get_umap_projection(feature_vectors, dimensions, should_fit, evorun_dir, calculate_surprise)
             # TODO add reconstruction error to the response (https://gpt.uio.no/chat/439344)
         elif request_path == '/raw':
             projection = np.array(feature_vectors)
-            novelty_scores = None
+            surprise_scores = None
 
 
         elif request_path == '/diversity_metrics':
             generation = jsonData.get('generation', 0)
             feature_vectors = jsonData['feature_vectors']
-            genotypes = jsonData.get('genotypes', [])
             stage = jsonData.get('stage', '')  # 'before' or 'after'
             
-            diversity_metrics = calculate_diversity_metrics(feature_vectors, genotypes)
+            diversity_metrics = calculate_diversity_metrics(feature_vectors)
             response = {
                 'status': 'OK', 
                 'diversity_metrics': diversity_metrics,
@@ -98,18 +96,32 @@ async def socket_server(websocket, path):
             }
 
         elif request_path == '/cluster_analysis':
+            generation = jsonData.get('generation', 0)
+            stage = jsonData.get('stage', '')  # 'before' or 'after'
             feature_vectors = jsonData['feature_vectors']
             cluster_analysis = perform_cluster_analysis(feature_vectors)
-            response = {'status': 'OK', 'cluster_analysis': cluster_analysis}
+            response = {
+                'status': 'OK', 'cluster_analysis': cluster_analysis,
+                'generation': generation,
+                'stage': stage
+                }
 
         elif request_path == '/performance_spread':
+            generation = jsonData.get('generation', 0)
+            stage = jsonData.get('stage', '')  # 'before' or 'after'
             feature_vectors = jsonData['feature_vectors']
             fitness_values = jsonData['fitness_values']
             performance_spread = calculate_performance_spread(feature_vectors, fitness_values)
-            response = {'status': 'OK', 'performance_spread': performance_spread}
+            response = {
+                'status': 'OK', 'performance_spread': performance_spread,
+                'generation': generation,
+                'stage': stage
+                }
 
         elif request_path == '/visualize_metrics':
             metrics_history = jsonData.get('metrics_history', {})
+            diversity_dir = jsonData['diversity_dir']
+            visualizer = MetricsVisualizer(diversity_dir + '/viz')
             visualizer.visualize(metrics_history)
             response = {'status': 'OK', 'message': 'Visualizations created successfully'}
 
@@ -120,38 +132,53 @@ async def socket_server(websocket, path):
             if request_path in cell_range_max_for_projection:
                 del cell_range_max_for_projection[request_path]
 
-        print('projection', projection)
 
-        projection_min = projection.min()
-        projection_max = projection.max()
-        if request_path not in cell_range_min_for_projection or cell_range_min_for_projection[request_path] > projection_min:
-            cell_range_min_for_projection[request_path] = projection_min
-        if request_path not in cell_range_max_for_projection or cell_range_max_for_projection[request_path] < projection_max:
-            cell_range_max_for_projection[request_path] = projection_max
+        # if projection is defined
+        if 'projection' in locals():
+            print('projection', projection)
+
+            projection_min = projection.min()
+            projection_max = projection.max()
+            if request_path not in cell_range_min_for_projection or cell_range_min_for_projection[request_path] > projection_min:
+                cell_range_min_for_projection[request_path] = projection_min
+            if request_path not in cell_range_max_for_projection or cell_range_max_for_projection[request_path] < projection_max:
+                cell_range_max_for_projection[request_path] = projection_max
         
 
-        # taking min/max of the projection values doesn't work, when there is just one (or few) vectors incoming - fixing to the range 0 to 1 for now:
-        # cell_range_min = projection.min()
-        # cell_range_max = projection.max()
-        # cell_range_min = 0
-        # cell_range_max = 1
-        cell_range_min = cell_range_min_for_projection[request_path]
-        cell_range_max = cell_range_max_for_projection[request_path]
-        print('cell_range_min', cell_range_min)
-        print('cell_range_max', cell_range_max)
-        # discretise / quantise the projection
-        # for each element in the projection, calculate the index of the cell it belongs to
-        # scale the range of each cell value to the range 0 to 1 with a call like:
-        # vector_to_index(v, cell_range_min, cell_range_max, cells, dimensions)
-        cells = args.dimension_cells
-        discretised_projection = []
-        for element in projection:
-            discretised_vector = vector_to_index(element, cell_range_min, cell_range_max, cells, dimensions)
-            print('discretised_vector', discretised_vector)
-            discretised_projection.append(discretised_vector)
+            # taking min/max of the projection values doesn't work, when there is just one (or few) vectors incoming - fixing to the range 0 to 1 for now:
+            # cell_range_min = projection.min()
+            # cell_range_max = projection.max()
+            # cell_range_min = 0
+            # cell_range_max = 1
+            cell_range_min = cell_range_min_for_projection[request_path]
+            cell_range_max = cell_range_max_for_projection[request_path]
+            print('cell_range_min', cell_range_min)
+            print('cell_range_max', cell_range_max)
+            # discretise / quantise the projection
+            # for each element in the projection, calculate the index of the cell it belongs to
+            # scale the range of each cell value to the range 0 to 1 with a call like:
+            # vector_to_index(v, cell_range_min, cell_range_max, cells, dimensions)
+            cells = args.dimension_cells
+            discretised_projection = []
+            for element in projection:
+                discretised_vector = vector_to_index(element, cell_range_min, cell_range_max, cells, dimensions)
+                print('discretised_vector', discretised_vector)
+                discretised_projection.append(discretised_vector)
 
-        if 'response' not in locals(): # endpoints /pca, /umap, /raw - TODO clean up
-            response = {'status': 'OK', 'feature_map': discretised_projection, 'novelty_scores': novelty_scores.tolist() if novelty_scores is not None else None}
+            print('discretised_projection size: ', len(discretised_projection))
+
+            if calculate_novelty:
+                novelty_scores = calculate_novelty_metric(discretised_projection, k=15)
+            else:
+                novelty_scores = None
+
+        # if 'response' not in locals(): # endpoints /pca, /umap, /raw - TODO clean up
+            response = {
+                'status': 'OK', 
+                'feature_map': discretised_projection, 
+                'surprise_scores': surprise_scores.tolist() if surprise_scores is not None else None,
+                'novelty_scores': novelty_scores.tolist() if novelty_scores is not None else None
+                }
         await websocket.send(json.dumps(response))
         
     except Exception as e:
@@ -163,7 +190,7 @@ async def socket_server(websocket, path):
     end = time.time()
     print('projection_pca_quantised: Time taken to process: ', end - start)
 
-    print('discretised_projection size: ', len(discretised_projection))
+    
 
     # TOD abandoning filtering of duplicates for now, as elite replacement currently handles this, in quality-diversity-search.js (kromosynth-qd)
     # ensure there is only one element per cell

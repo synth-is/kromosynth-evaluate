@@ -476,20 +476,21 @@ def get_spectral_flatness_mean_stdv(audio_data, sample_rate, frame_length=0.025,
 
     # the results from pyACA and librosa differ by orders of magnitude; optiong for pyACA for now
 
-    [vsf, t] = pyACA.computeFeature("SpectralFlatness", audio_data, sample_rate)
-    vsf_l2_normalized = l2_normalize(vsf)
-    # vsf_l2_normalized_mean = np.mean(vsf_l2_normalized)
-    # vsf_l2_normalized_stdv = np.std(vsf_l2_normalized)
-    vsf_mean = np.mean(vsf)
-    vsf_stdv = np.std(vsf)
+    # [vsf, t] = pyACA.computeFeature("SpectralFlatness", audio_data, sample_rate)
+    # vsf_l2_normalized = l2_normalize(vsf)
+    # # vsf_l2_normalized_mean = np.mean(vsf_l2_normalized)
+    # # vsf_l2_normalized_stdv = np.std(vsf_l2_normalized)
+    # vsf_mean = np.mean(vsf)
+    # vsf_stdv = np.std(vsf)
+    # return vsf_mean, vsf_stdv
 
-    # stft = np.abs(librosa.stft(audio_data))
-    # spectral_flatness = librosa.feature.spectral_flatness(S=stft)
-    # spectral_flatness = spectral_flatness[0]
-    # energy = np.sum(stft**2, axis=0)  # Energy of each frame
-    # spectral_flatness_weighted_mean, spectral_flatness_weighted_stdv = get_weighted_mean_stdv_nomalized(spectral_flatness, energy, sample_rate, normalize_by_nyquist=False)
+    stft = np.abs(librosa.stft(audio_data))
+    spectral_flatness = librosa.feature.spectral_flatness(S=stft)
+    spectral_flatness = spectral_flatness[0]
+    energy = np.sum(stft**2, axis=0)  # Energy of each frame
+    spectral_flatness_weighted_mean, spectral_flatness_weighted_stdv = get_weighted_mean_stdv_nomalized(spectral_flatness, energy, sample_rate, normalize_by_nyquist=False)
+    return spectral_flatness_weighted_mean, spectral_flatness_weighted_stdv
     
-    return vsf_mean, vsf_stdv
 
     # spectral_flatness = librosa.feature.spectral_flatness(y=audio_data, n_fft=int(frame_length * sample_rate), hop_length=int(frame_step * sample_rate))
     # spectral_flatness = spectral_flatness[0]

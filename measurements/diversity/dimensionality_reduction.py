@@ -155,7 +155,7 @@ def calculate_smoothness(feature_vector):
     total_variation = np.sum(np.abs(np.diff(feature_vector)))
     return 1 / (total_variation + 1e-10)
 
-def calculate_novelty_score(reconstruction_loss, max_reconstruction_error, feature_vector, max_complexity, max_smoothness, alpha=10, beta=0.5, gamma=0.5):
+def calculate_surprise_score(reconstruction_loss, max_reconstruction_error, feature_vector, max_complexity, max_smoothness, alpha=10, beta=0.5, gamma=0.5):
     normalized_loss = reconstruction_loss / max_reconstruction_error
     complexity = calculate_complexity(feature_vector)
     smoothness = calculate_smoothness(feature_vector)
@@ -167,7 +167,7 @@ def calculate_novelty_score(reconstruction_loss, max_reconstruction_error, featu
     
     return 1 / (1 + np.exp(-alpha * (adjusted_loss - 0.5)))
 
-def get_pca_projection(features, n_components=2, should_fit=True, evorun_dir='', calculate_novelty=False, components_list=[], use_autoencoder=False):
+def get_pca_projection(features, n_components=2, should_fit=True, evorun_dir='', calculate_surprise=False, components_list=[], use_autoencoder=False):
     model_manager = get_model_manager(evorun_dir)
     
     if should_fit:
@@ -182,12 +182,13 @@ def get_pca_projection(features, n_components=2, should_fit=True, evorun_dir='',
         transformed = model_manager.pca.transform(features)
         model_manager.scaler.fit(transformed)
         
+        # TODO fine-tune after initial training, instead of training a new one from scratc on each retrainging pahes?
         if use_autoencoder:
             print('Training PCA autoencoder...')
             model_manager.pca_autoencoder = create_pca_autoencoder(features.shape[1], n_components, random_state=42)
             model_manager.pca_autoencoder.fit(features, features, epochs=100, batch_size=64, verbose=0)
         
-        if calculate_novelty:
+        if calculate_surprise:
             if use_autoencoder:
                 all_reconstruction_losses = calculate_reconstruction_loss(model_manager.pca_autoencoder, features)
             else:
@@ -206,25 +207,25 @@ def get_pca_projection(features, n_components=2, should_fit=True, evorun_dir='',
     if len(components_list) > 0:
         scaled = scaled[:, components_list]
 
-    if calculate_novelty:
+    if calculate_surprise and model_manager.max_reconstruction_error is not None:
         if use_autoencoder and model_manager.pca_autoencoder is not None:
             reconstruction_losses = calculate_reconstruction_loss(model_manager.pca_autoencoder, features)
         else:
             reconstruction_losses = calculate_reconstruction_loss(model_manager.pca, features)
-        novelty_scores = np.array([
-            calculate_novelty_score(loss, model_manager.max_reconstruction_error, feature, model_manager.max_complexity, model_manager.max_smoothness)
+        surprise_scores = np.array([
+            calculate_surprise_score(loss, model_manager.max_reconstruction_error, feature, model_manager.max_complexity, model_manager.max_smoothness)
             for loss, feature in zip(reconstruction_losses, features)
         ])
-        return scaled, novelty_scores
+        return scaled, surprise_scores
     else:
         return scaled, None
 
-def get_umap_projection(features, n_components=2, should_fit=True, evorun_dir='', calculate_novelty=False, random_state=42, n_neighbors=15, min_dist=0.1):
+def get_umap_projection(features, n_components=2, should_fit=True, evorun_dir='', calculate_surprise=False, random_state=42, n_neighbors=15, min_dist=0.1):
     model_manager = get_model_manager(evorun_dir)
     
     if should_fit:
         input_dim = features.shape[1]
-        if calculate_novelty:
+        if calculate_surprise:
             encoder, decoder = create_autoencoder(input_dim, n_components, random_state)
         else:
             encoder, decoder = None, None
@@ -233,7 +234,7 @@ def get_umap_projection(features, n_components=2, should_fit=True, evorun_dir=''
             n_components=n_components,
             encoder=encoder,
             decoder=decoder,
-            autoencoder_loss=calculate_novelty,
+            autoencoder_loss=calculate_surprise,
             loss_report_frequency=1,
             n_epochs=100,
             batch_size=64,
@@ -246,7 +247,7 @@ def get_umap_projection(features, n_components=2, should_fit=True, evorun_dir=''
         print('Fitting UMAP model...')
         model_manager.umap.fit(features)
         
-        if calculate_novelty:
+        if calculate_surprise:
             all_reconstruction_losses = calculate_reconstruction_loss(model_manager.umap, features)
             model_manager.max_reconstruction_error = np.max(all_reconstruction_losses)
             model_manager.max_complexity = np.max([calculate_complexity(f) for f in features])
@@ -258,13 +259,13 @@ def get_umap_projection(features, n_components=2, should_fit=True, evorun_dir=''
 
     transformed = model_manager.umap.transform(features)
 
-    if calculate_novelty:
+    if calculate_surprise:
         reconstruction_losses = calculate_reconstruction_loss(model_manager.umap, features)
-        novelty_scores = np.array([
-            calculate_novelty_score(loss, model_manager.max_reconstruction_error, feature, model_manager.max_complexity, model_manager.max_smoothness)
+        surprise_scores = np.array([
+            calculate_surprise_score(loss, model_manager.max_reconstruction_error, feature, model_manager.max_complexity, model_manager.max_smoothness)
             for loss, feature in zip(reconstruction_losses, features)
         ])
-        return transformed, novelty_scores
+        return transformed, surprise_scores
     else:
         return transformed, None
 

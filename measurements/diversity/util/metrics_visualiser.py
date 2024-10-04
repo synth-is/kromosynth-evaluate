@@ -18,6 +18,7 @@ class MetricsVisualizer:
         self._plot_network(metrics_history)
 
     def _plot_line_charts(self, metrics_history):
+        # TODO values is a struct:
         for metric_name, values in metrics_history.items():
             if isinstance(values[0], (int, float)):
                 plt.figure(figsize=(10, 6))

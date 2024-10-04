@@ -11,6 +11,7 @@ import numpy as np
 import os
 from setproctitle import setproctitle
 import time
+from urllib.parse import urlparse, parse_qs
 
 # import the function get_mfcc_feature_means_stdv_firstorderdifference_concatenated from measurements/diversity/mfcc.py
 import sys
@@ -19,6 +20,9 @@ from measurements.quality.quality_instrumentation import nsynth_instrument_mean,
 from evaluation.util import filepath_to_port
 
 async def socket_server(websocket, path):
+    url_components = urlparse(path)
+    request_path = url_components.path
+    query_params = parse_qs(url_components.query)  # This will hold the query parameters as a dict
     try:
       # Wait for the first message and determine its type
       message = await websocket.recv()
@@ -32,13 +36,24 @@ async def socket_server(websocket, path):
           audio_data = np.frombuffer(audio_data, dtype=np.float32)
           
           fitness_percentages = []
-          for method in QUALITY_METHODS:
-            if method == 'nsynth_instrument':
-              fitness_result = nsynth_instrument_mean(audio_data, MODELS_PATH)
-              fitness_value = fitness_result.item()
-            elif method == 'nsynth_instrument_topscore':
-              fitness_result = nsynth_instrument_topscore_and_index_and_class(audio_data, MODELS_PATH)
-              fitness_value = { 'top_score': fitness_result[0].item(), 'index': fitness_result[1].item(), 'top_score_class': fitness_result[2] }
+
+          if request_path == '/nsynth_instrument':
+            fitness_result = nsynth_instrument_mean(audio_data, MODELS_PATH)
+            fitness_value = fitness_result.item()
+          elif request_path == '/nsynth_instrument_topscore':
+            fitness_result = nsynth_instrument_topscore_and_index_and_class(audio_data, MODELS_PATH)
+            fitness_value = fitness_result[0].item()
+          elif request_path == '/nsynth_instrument_topscore_and_class':
+            fitness_result = nsynth_instrument_topscore_and_index_and_class(audio_data, MODELS_PATH)
+            fitness_value = { 'top_score': fitness_result[0].item(), 'index': fitness_result[1].item(), 'top_score_class': fitness_result[2] }
+          else: # or '/'; expecting a list of quality methods from a command line argument
+            for method in QUALITY_METHODS:
+              if method == 'nsynth_instrument':
+                fitness_result = nsynth_instrument_mean(audio_data, MODELS_PATH)
+                fitness_value = fitness_result.item()
+              elif method == 'nsynth_instrument_topscore_and_class': # used to be nsynth_instrument_topscore, and referenced as such in old configurations
+                fitness_result = nsynth_instrument_topscore_and_index_and_class(audio_data, MODELS_PATH)
+                fitness_value = { 'top_score': fitness_result[0].item(), 'index': fitness_result[1].item(), 'top_score_class': fitness_result[2] }
 
             # TODO argmax of logits from: https://huggingface.co/docs/transformers/v4.40.1/en/model_doc/audio-spectrogram-transformer#transformers.ASTForAudioClassification
 
@@ -68,12 +83,10 @@ parser.add_argument('--force-host', type=bool, default=False, help='Force the ho
 parser.add_argument('--port', type=int, default=8080, help='Port number to run the WebSocket server on.')
 parser.add_argument('--sample-rate', type=int, default=48000, help='Sample rate of the audio data.')
 parser.add_argument('--quality-methods', type=str, default='nsynth_instrument', help='Quality methods to use.')
-parser.add_argument('--process-title', type=str, default='quality_mood', help='Process title to use.')
+parser.add_argument('--process-title', type=str, default='quality_instrumentation', help='Process title to use.')
 parser.add_argument('--models-path', type=str, default='../../measurements/models', help='Path to classification models.')
 parser.add_argument('--host-info-file', type=str, default='', help='Host information file to use.')
 args = parser.parse_args()
-
-sample_rate = args.sample_rate
 
 # parse the comma separted list of quality methods
 print("args.quality_methods", args.quality_methods)
@@ -109,7 +122,7 @@ if args.host_info_file:
 
 MAX_MESSAGE_SIZE = 100 * 1024 * 1024  # 100MB
 
-print('Starting fitness / sound quality (mood) WebSocket server at ws://{}:{}'.format(HOST, PORT))
+print('Starting fitness / sound quality (instrumentation) WebSocket server at ws://{}:{}'.format(HOST, PORT))
 # Start the WebSocket server with supplied command line arguments
 start_server = websockets.serve(socket_server, 
                                 HOST, 
