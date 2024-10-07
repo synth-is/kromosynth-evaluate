@@ -26,6 +26,22 @@ def cosine_similarity(query_embedding, reference_embedding):
     cosine_dissimilarity = cosine(query_embedding.flatten(), reference_embedding.flatten())
     return 1 - (cosine_dissimilarity / 2)
 
+def improved_cosine_similarity(query_embedding, reference_embedding):
+    # Normalize vectors - epsilon (1e-8) to avoid division by zero during normalization
+    query_norm = query_embedding / (np.linalg.norm(query_embedding) + 1e-8)
+    reference_norm = reference_embedding / (np.linalg.norm(reference_embedding) + 1e-8)
+    
+    # Compute cosine similarity
+    similarity = 1 - cosine(query_norm, reference_norm)
+    
+    # Ensure similarity is within [-1, 1] range
+    similarity = np.clip(similarity, -1, 1)
+    
+    # Convert to [0, 1] range
+    similarity = (similarity + 1) / 2
+    
+    return similarity
+
 def euclidean_distance(query_embedding, reference_embedding):
     scaler = StandardScaler()
     combined = np.vstack((query_embedding, reference_embedding))
@@ -36,12 +52,56 @@ def euclidean_distance(query_embedding, reference_embedding):
     max_distance = np.sqrt(len(query_scaled))  # Maximum possible distance in normalized space
     return 1 - (distance / max_distance)
 
-def adaptive_similarity(query_embedding, reference_embedding):
-    dim = len(query_embedding)
-    if dim <= 2:
-        return euclidean_distance(query_embedding, reference_embedding)
+# alternative to euclidean_distance (euclidean in effect)
+def low_dimensional_similarity(query_features, reference_features):
+    # Ensure inputs are numpy arrays
+    query_features = np.array(query_features)
+    reference_features = np.array(reference_features)
+    
+    # Normalize features to [0, 1] range
+    min_vals = np.minimum(query_features.min(axis=0), reference_features.min(axis=0))
+    max_vals = np.maximum(query_features.max(axis=0), reference_features.max(axis=0))
+    query_norm = (query_features - min_vals) / (max_vals - min_vals)
+    reference_norm = (reference_features - min_vals) / (max_vals - min_vals)
+    
+    # Calculate Euclidean distance
+    distance = np.linalg.norm(query_norm - reference_norm)
+    
+    # Convert distance to similarity score
+    max_distance = np.sqrt(len(query_features))  # Maximum possible distance in normalized space
+    similarity = 1 - (distance / max_distance)
+    
+    return similarity
+
+# def adaptive_similarity(query_embedding, reference_embedding):
+#     dim = len(query_embedding)
+#     if dim <= 2:
+#         return euclidean_distance(query_embedding, reference_embedding)
+#     else:
+#         return cosine_similarity(query_embedding, reference_embedding)
+
+def adaptive_similarity(query_features, reference_features):
+    dim = len(query_features)
+    if dim <= 3:
+        return low_dimensional_similarity(query_features, reference_features)
+    elif dim <= 50:
+        similarity = improved_cosine_similarity(query_features, reference_features)
+        # Apply the original 1.5 power transformation
+        return similarity ** 1.5
     else:
-        return cosine_similarity(query_embedding, reference_embedding)
+        similarity = improved_cosine_similarity(query_features, reference_features)
+        return similarity ** 2  # More aggressive transformation
+
+# "To account for the difference in dimensionality between MFCC and VGGish features, we could apply a scaling factor based on the number of dimensions."
+# TODO not yet used
+def get_similarity(query_embedding, reference_embedding):
+    similarity = improved_cosine_similarity(query_embedding, reference_embedding)
+    
+    # Optional: Apply a scaling factor based on dimensionality
+    dim = len(query_embedding)
+    scaling_factor = np.log(dim) / np.log(128)  # Normalize to VGGish dimensionality
+    
+    return similarity * scaling_factor
 
 async def socket_server(websocket, path):
     global reference_embeddings
@@ -72,6 +132,8 @@ async def socket_server(websocket, path):
         
         if request_path == '/cosine':
             fitness = cosine_similarity(query_embedding, reference_embedding)
+        elif request_path == '/improved_cosine':
+            fitness = improved_cosine_similarity(query_embedding, reference_embedding)
         elif request_path == '/euclidean':
             fitness = euclidean_distance(query_embedding, reference_embedding)
         elif request_path == '/adaptive':

@@ -10,9 +10,10 @@ import time
 from urllib.parse import urlparse, parse_qs
 import numpy as np
 
+
 import sys
 sys.path.append('../..')
-from measurements.diversity.dimensionality_reduction import get_pca_projection, get_umap_projection
+from measurements.diversity.dimensionality_reduction import get_pca_projection, get_autoencoder_projection, get_umap_projection, clear_tf_session, projection_with_cleanup
 from measurements.diversity.util.discretise import vector_to_index
 from measurements.diversity.util.metrics_visualiser import MetricsVisualizer
 from measurements.diversity.util.diversity_metrics import calculate_diversity_metrics, perform_cluster_analysis, calculate_performance_spread, calculate_novelty_metric
@@ -59,6 +60,7 @@ async def socket_server(websocket, path):
         should_fit = jsonData.get('should_fit', False)
         print('should_fit: ', should_fit)
         calculate_surprise = jsonData.get('calculate_surprise', False)
+        use_autoencoder_for_surprise = jsonData.get('use_autoencoder_for_surprise', False)
         calculate_novelty = jsonData.get('calculate_novelty', False)
         print('calculate_surprise: ', calculate_surprise)
         evorun_dir = jsonData.get('evorun_dir', '')
@@ -73,10 +75,29 @@ async def socket_server(websocket, path):
                 components_list = list(map(int, pca_components.split(',')))
             else:
                 components_list = []
-            projection, surprise_scores = get_pca_projection(feature_vectors, dimensions, should_fit, evorun_dir, calculate_surprise, components_list)
+            projection, surprise_scores = projection_with_cleanup(
+                get_pca_projection,
+                feature_vectors, dimensions, should_fit, evorun_dir, calculate_surprise, components_list, use_autoencoder_for_surprise
+            )
+            # get_pca_projection(feature_vectors, dimensions, should_fit, evorun_dir, calculate_surprise, components_list, use_autoencoder_for_surprise)
+            # if use_autoencoder_for_surprise:
+                # clear_tf_session()
+        elif request_path == '/autoencoder':
+            projection, surprise_scores = projection_with_cleanup(
+                get_autoencoder_projection,
+                feature_vectors, dimensions, should_fit, evorun_dir, calculate_surprise
+            )
+            # get_autoencoder_projection(feature_vectors, dimensions, should_fit, evorun_dir, calculate_surprise)
+            # clear_tf_session()
         elif request_path == '/umap':
-            projection, surprise_scores = get_umap_projection(feature_vectors, dimensions, should_fit, evorun_dir, calculate_surprise)
-            # TODO add reconstruction error to the response (https://gpt.uio.no/chat/439344)
+            projection, surprise_scores = projection_with_cleanup(
+                get_umap_projection,
+                feature_vectors, dimensions, should_fit, evorun_dir, calculate_surprise,
+                metric='cosine'
+            )
+            #get_umap_projection(feature_vectors, dimensions, should_fit, evorun_dir, calculate_surprise, 
+            #                                                 metric='cosine')
+            # clear_tf_session()
         elif request_path == '/raw':
             projection = np.array(feature_vectors)
             surprise_scores = None
@@ -201,6 +222,7 @@ async def socket_server(websocket, path):
 
     # Send a JSON response back to the client
     # response = {'status': 'OK', 'feature_map': unique_projection, 'fitness_values': unique_fitness_values, 'indices_to_keep': indices_to_keep}
+
 
 # Parse command line arguments
 parser = argparse.ArgumentParser(description='Run a WebSocket server.')
