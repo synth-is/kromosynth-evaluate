@@ -15,7 +15,7 @@ import sys
 sys.path.append('../..')
 from measurements.diversity.dimensionality_reduction import get_pca_projection, get_autoencoder_projection, get_umap_projection, clear_tf_session, projection_with_cleanup
 from measurements.diversity.util.discretise import vector_to_index
-from measurements.diversity.util.metrics_visualiser import MetricsVisualizer
+# from measurements.diversity.util.metrics_visualiser import MetricsVisualizer
 from measurements.diversity.util.diversity_metrics import calculate_diversity_metrics, perform_cluster_analysis, calculate_performance_spread, calculate_novelty_metric
 from evaluation.util import filepath_to_port
 
@@ -139,12 +139,12 @@ async def socket_server(websocket, path):
                 'stage': stage
                 }
 
-        elif request_path == '/visualize_metrics':
-            metrics_history = jsonData.get('metrics_history', {})
-            diversity_dir = jsonData['diversity_dir']
-            visualizer = MetricsVisualizer(diversity_dir + '/viz')
-            visualizer.visualize(metrics_history)
-            response = {'status': 'OK', 'message': 'Visualizations created successfully'}
+        # elif request_path == '/visualize_metrics':
+        #     metrics_history = jsonData.get('metrics_history', {})
+        #     diversity_dir = jsonData['diversity_dir']
+        #     visualizer = MetricsVisualizer(diversity_dir + '/viz')
+        #     visualizer.visualize(metrics_history)
+        #     response = {'status': 'OK', 'message': 'Visualizations created successfully'}
 
         if should_fit:
             # delete the entry for the request_path in cell_range_min_for_projection and cell_range_max_for_projection
