@@ -342,17 +342,26 @@ def get_umap_projection(features, n_components=2, should_fit=True, evorun_dir=''
                         random_state=42, n_neighbors=15, min_dist=0.1, metric='euclidean'):
     model_manager = get_model_manager(evorun_dir)
     
-    if should_fit:
+    try:
         features = np.array(features)
-        input_dim = features.shape[1]
+    except Exception as e:
+        print(f"Error converting features to numpy array: {str(e)}")
+        raise
+    try:
         n_samples = features.shape[0]
+    except Exception as e:
+        print(f"Error determining the number of samples: {str(e)}")
+        raise
 
-        # Adjust n_neighbors if necessary
-        if n_samples <= n_neighbors:
-            original_n_neighbors = n_neighbors
-            n_neighbors = max(2, n_samples - 1)  # Ensure at least 2 neighbors
-            warnings.warn(f"n_neighbors ({original_n_neighbors}) is greater than or equal to n_samples ({n_samples}). "
-                          f"Reducing n_neighbors to {n_neighbors}.")
+    # Check n_neighbors regardless of should_fit
+    if n_samples <= n_neighbors:
+        original_n_neighbors = n_neighbors
+        n_neighbors = max(2, n_samples - 1)  # Ensure at least 2 neighbors
+        warnings.warn(f"n_neighbors ({original_n_neighbors}) is greater than or equal to n_samples ({n_samples}). "
+                      f"Reducing n_neighbors to {n_neighbors} for this projection.")
+    
+    if should_fit:
+        input_dim = features.shape[1]
 
         if calculate_surprise:
             encoder, decoder = create_autoencoder(input_dim, n_components, random_state)
@@ -369,9 +378,6 @@ def get_umap_projection(features, n_components=2, should_fit=True, evorun_dir=''
             n_neighbors=n_neighbors,
             min_dist=min_dist,
             metric=metric,
-            # reproducibility at the cost of performance?
-            # random_state=random_state, # Random state for UMAP: " Use no seed for parallelism"
-            # init='random'
         )
         
         print('Fitting UMAP model...')
@@ -387,7 +393,36 @@ def get_umap_projection(features, n_components=2, should_fit=True, evorun_dir=''
     else:
         model_manager.load_model()
 
-    transformed = model_manager.umap.transform(features)
+    # Use the adjusted n_neighbors for transform if necessary
+    if n_samples <= model_manager.umap.n_neighbors:
+        # Create a dictionary of parameters to pass to ParametricUMAP
+        umap_params = {
+            'n_components': model_manager.umap.n_components,
+            'n_neighbors': n_neighbors,
+            'min_dist': model_manager.umap.min_dist,
+            'metric': model_manager.umap.metric,
+        }
+        
+        # Only add encoder and decoder if they exist
+        if hasattr(model_manager.umap, 'encoder') and model_manager.umap.encoder is not None:
+            umap_params['encoder'] = model_manager.umap.encoder
+        if hasattr(model_manager.umap, 'decoder') and model_manager.umap.decoder is not None:
+            umap_params['decoder'] = model_manager.umap.decoder
+        
+        # Add other attributes if they exist
+        for attr in ['n_epochs', 'batch_size', 'autoencoder_loss']:
+            if hasattr(model_manager.umap, attr):
+                umap_params[attr] = getattr(model_manager.umap, attr)
+        
+        temp_umap = ParametricUMAP(**umap_params)
+        
+        # Copy the embedding if it exists
+        if hasattr(model_manager.umap, 'embedding_'):
+            temp_umap.embedding_ = model_manager.umap.embedding_
+        
+        transformed = temp_umap.transform(features)
+    else:
+        transformed = model_manager.umap.transform(features)
 
     if calculate_surprise:
         reconstruction_losses = calculate_reconstruction_loss(model_manager.umap, features)

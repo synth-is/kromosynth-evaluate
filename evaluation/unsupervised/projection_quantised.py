@@ -209,7 +209,7 @@ async def socket_server(websocket, path):
         return
 
     end = time.time()
-    print('projection_pca_quantised: Time taken to process: ', end - start)
+    print('projection_quantised: Time taken to process: ', end - start)
 
     
 

@@ -19,7 +19,7 @@ def calculate_diversity_metrics(feature_vectors):
 
 
     # Novelty Metric
-    k = 15  # number of nearest neighbors
+    k = min(15, len(feature_vectors)-1)  # number of nearest neighbors or equal to feature_vectors length, if they are less than 15
     # The following approach does not scale well...
     # novelty_scores = []
     # for i, fv in enumerate(feature_vectors):
