@@ -9,6 +9,7 @@ import numpy as np
 import os
 from setproctitle import setproctitle
 import time
+from urllib.parse import urlparse, parse_qs
 
 # import the function get_mfcc_feature_means_stdv_firstorderdifference_concatenated from measurements/diversity/mfcc.py
 import sys
@@ -20,6 +21,14 @@ from measurements.quality.quality_mood import (
 from evaluation.util import filepath_to_port
 
 async def socket_server(websocket, path):
+    url_components = urlparse(path)
+    query_params = parse_qs(url_components.query)  # This will hold the query parameters as a dict
+    quality_methods_from_query = query_params.get('quality_methods', [None])[0]
+    if quality_methods_from_query:
+        quality_methods = quality_methods_from_query.split(',')
+    else:
+        quality_methods = QUALITY_METHODS_FROM_ARGS
+    print('quality_methods:', quality_methods)
     try:
       # Wait for the first message and determine its type
       message = await websocket.recv()
@@ -33,7 +42,7 @@ async def socket_server(websocket, path):
           audio_data = np.frombuffer(audio_data, dtype=np.float32)
           
           fitness_percentages = []
-          for method in QUALITY_METHODS:
+          for method in quality_methods:
             if method == 'mood_aggressive':
               fitness_percentages.append(mood_aggressive(audio_data, MODELS_PATH))
             elif method == 'mood_happy':
@@ -53,6 +62,10 @@ async def socket_server(websocket, path):
             elif method == 'top_mood':
                fitness_result = get_top_mood(audio_data, MODELS_PATH)
                fitness_value = { 'top_score_class': fitness_result[0], 'top_score': fitness_result[1]}
+            elif method == 'top_mood_score_only':
+                fitness_result = get_top_mood(audio_data, MODELS_PATH)
+                print('top mood score only:', fitness_result[1], 'top mood class:', fitness_result[0])
+                fitness_value = fitness_result[1]
 
           # print('sound quality percentages (mood):', fitness_percentages)
 
@@ -88,7 +101,7 @@ sample_rate = args.sample_rate
 
 # parse the comma separted list of quality methods
 print("args.quality_methods", args.quality_methods)
-QUALITY_METHODS = args.quality_methods.split(',')
+QUALITY_METHODS_FROM_ARGS = args.quality_methods.split(',')
 
 MODELS_PATH = args.models_path
 # if MODELS_PATH contains "/localscratch/<job-ID>" then replace the job-ID with the environment variable SLURM_JOB_ID
