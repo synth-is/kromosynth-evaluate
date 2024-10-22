@@ -57,6 +57,12 @@ async def socket_server(websocket, path):
                 embeddings = get_mfcc_features(audio_data, sample_rate)
                 features = get_feature_means_stdv_firstorderdifference_concatenated(embeddings)
                 features_type = 'mfcc'
+            elif request_path == '/mfcc-sans0': # without the first coefficient
+                print('Extracting MFCC features without the first coefficient...')
+                embeddings = get_mfcc_features(audio_data, sample_rate)
+                embeddings = embeddings[1:]
+                features = get_feature_means_stdv_firstorderdifference_concatenated(embeddings)
+                features_type = 'mfcc-sans0'
             elif request_path == '/mfcc-statistics':
                 print('Extracting MFCC statistics...')
                 embeddings = get_mfcc_features(audio_data, sample_rate)

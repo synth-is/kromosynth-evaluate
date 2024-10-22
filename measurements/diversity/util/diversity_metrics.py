@@ -9,6 +9,7 @@ from sklearn.preprocessing import normalize
 def calculate_diversity_metrics(feature_vectors):
     # Behavioral Diversity
     behavioral_distances = pdist(feature_vectors, metric='cosine')
+    behavioral_distances = behavioral_distances[~np.isnan(behavioral_distances)]
     # Normalize distances
     behavioral_distances = (behavioral_distances - np.min(behavioral_distances)) / (np.max(behavioral_distances) - np.min(behavioral_distances))
     behavioral_diversity = {
