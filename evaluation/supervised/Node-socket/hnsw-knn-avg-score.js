@@ -5,6 +5,8 @@ import fs from "fs";
 import hnswPkg from 'hnswlib-node';
 import { parse as parseUrl } from 'url';
 const { HierarchicalNSW } = hnswPkg;
+import crypto from 'crypto';
+import net from 'net';
 
 function calculateL2Norm(vector) {
     return Math.sqrt(vector.reduce((sum, val) => sum + val * val, 0));
@@ -74,11 +76,18 @@ const argv = parseArgs(process.argv.slice(2));
 let port;
 let host;
 if (argv.hostInfoFilePath) {
-  port = 40051;
-  argv.hostInfoFilePath.substring(argv.hostInfoFilePath.lastIndexOf("host-")+5).split("-").reverse().forEach((i, idx) => port += parseInt(i) * (idx+1*10));
+//   port = 40051;
+//   argv.hostInfoFilePath.substring(argv.hostInfoFilePath.lastIndexOf("host-")+5).split("-").reverse().forEach((i, idx) => port += parseInt(i) * (idx+1*10));
+  let hostInfoFilePath;
+  if( process.env.pm_id ) { // being managed by PM2
+    hostInfoFilePath = `${argv.hostInfoFilePath}${parseInt(process.env.pm_id) + 1}`;
+  } else {
+    hostInfoFilePath = argv.hostInfoFilePath;
+  }
+  port = await filepathToPort( hostInfoFilePath );
   host = os.hostname();
   const hostname = `${host}:${port}`;
-  fs.writeFile(argv.hostInfoFilePath, hostname, () => console.log(`Wrote hostname to ${argv.hostInfoFilePath}`));
+  fs.writeFile(hostInfoFilePath, hostname, () => console.log(`Wrote hostname to ${hostInfoFilePath}`));
 } else {
   port = argv.port || process.env.PORT || '40051';
   host = "0.0.0.0";
@@ -159,3 +168,27 @@ wss.on("connection", (ws, req) => {
 });
 
 console.log(`Evaluation WebSocketServer (HNSW) listening on port ${port}`);
+
+function isPortTaken(port) {
+  return new Promise((resolve) => {
+      const server = net.createServer()
+          .once('error', () => resolve(true))
+          .once('listening', () => server.once('close', () => resolve(false)).close())
+          .listen(port);
+  });
+}
+async function filepathToPort(filepath, variation = 0) {
+    let filepathVariation = filepath + variation.toString();
+    let hash = crypto.createHash('md5').update(filepathVariation).digest("hex");
+    let shortHash = parseInt(hash.substring(0, 8), 16);
+    let port = 1024 + shortHash % (65535 - 1024);
+    let isTaken = await isPortTaken(port);
+  
+    if(isTaken) {
+        console.log(`--- filepathToPort(${filepath}): port ${port} taken`)
+        return await filepathToPort(filepath, variation + 1);
+    } else {
+        console.log(`--- filepathToPort(${filepath}): port ${port} available`);
+        return port;
+    }
+  }
