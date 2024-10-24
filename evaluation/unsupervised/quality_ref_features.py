@@ -27,6 +27,10 @@ def cosine_similarity(query_embedding, reference_embedding):
     return 1 - (cosine_dissimilarity / 2)
 
 def improved_cosine_similarity(query_embedding, reference_embedding):
+    # Check for zero vector
+    if np.all(query_embedding == 0) or np.all(reference_embedding == 0):
+        return
+        
     # Normalize vectors - epsilon (1e-8) to avoid division by zero during normalization
     query_norm = query_embedding / (np.linalg.norm(query_embedding) + 1e-8)
     reference_norm = reference_embedding / (np.linalg.norm(reference_embedding) + 1e-8)
