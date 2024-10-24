@@ -11,7 +11,12 @@ def calculate_diversity_metrics(feature_vectors):
     behavioral_distances = pdist(feature_vectors, metric='cosine')
     behavioral_distances = behavioral_distances[~np.isnan(behavioral_distances)]
     # Normalize distances
-    behavioral_distances = (behavioral_distances - np.min(behavioral_distances)) / (np.max(behavioral_distances) - np.min(behavioral_distances))
+    min_dist = np.min(behavioral_distances)
+    max_dist = np.max(behavioral_distances)
+    if max_dist - min_dist != 0:
+        behavioral_distances = (behavioral_distances - min_dist) / (max_dist - min_dist)
+    else:
+        behavioral_distances = np.zeros_like(behavioral_distances)
     behavioral_diversity = {
         'mean': np.mean(behavioral_distances),
         'median': np.median(behavioral_distances),
