@@ -24,9 +24,14 @@ def get_feature_means_stdv_firstorderdifference_concatenated(features):
     # Get the average difference of the features (first order difference)
     average_difference_features = np.zeros((num_features,))
     for i in range(0, len(features) - 2, 2):
+    # for i in range(0, len(features) - 1):
         average_difference_features += features[i] - features[i+1]
     average_difference_features /= (len(features) // 2)   
+    # average_difference_features /= (len(features) - 1) 
     average_difference_features = np.array(average_difference_features)
+
+    # Handle potential NaN values
+    average_difference_features = np.nan_to_num(average_difference_features)
 
     # Concatenate the MFCC features for each frame into a single array
     features_concatenated = np.hstack((feature_means, feature_stdv, average_difference_features))
