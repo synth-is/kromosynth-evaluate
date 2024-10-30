@@ -68,6 +68,12 @@ async def socket_server(websocket, path):
                 embeddings = get_mfcc_features(audio_data, sample_rate)
                 features = compute_feature_statistics(embeddings)
                 features_type = 'mfcc-statistics'
+            elif request_path == '/mfcc-sans0-statistics':
+                print('Extracting MFCC statistics without the first coefficient...')
+                embeddings = get_mfcc_features(audio_data, sample_rate)
+                embeddings = embeddings[1:]
+                features = compute_feature_statistics(embeddings)
+                features_type = 'mfcc-sans0-statistics'
             else:
                 ckpt_dir = query_params.get('ckpt_dir', [None])[0]
                 # if ckpt_dir contains "/localscratch/<job-ID>" then replace the job-ID with the environment variable SLURM_JOB_ID

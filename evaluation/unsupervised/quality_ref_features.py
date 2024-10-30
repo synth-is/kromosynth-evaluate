@@ -29,7 +29,7 @@ def cosine_similarity(query_embedding, reference_embedding):
 def improved_cosine_similarity(query_embedding, reference_embedding):
     # Check for zero vector
     if np.all(query_embedding == 0) or np.all(reference_embedding == 0):
-        return
+        return 0
         
     # Normalize vectors - epsilon (1e-8) to avoid division by zero during normalization
     query_norm = query_embedding / (np.linalg.norm(query_embedding) + 1e-8)
@@ -84,17 +84,19 @@ def low_dimensional_similarity(query_features, reference_features):
 #     else:
 #         return cosine_similarity(query_embedding, reference_embedding)
 
-def adaptive_similarity(query_features, reference_features):
+def adaptive_similarity(query_features, reference_features, transformation_power=None):
+    print('transformation_power:', transformation_power)
     dim = len(query_features)
     if dim <= 3:
         return low_dimensional_similarity(query_features, reference_features)
     elif dim <= 50:
         similarity = improved_cosine_similarity(query_features, reference_features)
-        # Apply the original 1.5 power transformation
-        return similarity ** 1.5
+        power = transformation_power if transformation_power is not None else 1.5
+        return similarity ** power
     else:
         similarity = improved_cosine_similarity(query_features, reference_features)
-        return similarity ** 2  # More aggressive transformation
+        power = transformation_power if transformation_power is not None else 2
+        return similarity ** power
 
 # "To account for the difference in dimensionality between MFCC and VGGish features, we could apply a scaling factor based on the number of dimensions."
 # TODO not yet used
@@ -119,6 +121,9 @@ async def socket_server(websocket, path):
         
         reference_embedding_path = query_params.get('reference_embedding_path', [None])[0]
         reference_embedding_key = query_params.get('reference_embedding_key', [None])[0]
+        transformation_power = query_params.get('transformation_power', [None])[0]
+        if transformation_power is not None:
+            transformation_power = float(transformation_power)
         
         if reference_embedding_path is not None and os.path.exists(reference_embedding_path) and reference_embedding_path not in reference_embeddings:
             print(f"Loading reference embeddings from {reference_embedding_path}")
@@ -141,7 +146,7 @@ async def socket_server(websocket, path):
         elif request_path == '/euclidean':
             fitness = euclidean_distance(query_embedding, reference_embedding)
         elif request_path == '/adaptive':
-            fitness = adaptive_similarity(query_embedding, reference_embedding)
+            fitness = adaptive_similarity(query_embedding, reference_embedding, transformation_power)
         else:
             raise ValueError(f"Unknown endpoint: {request_path}")
         
