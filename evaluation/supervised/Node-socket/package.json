@@ -10,7 +10,7 @@
   "license": "AGPL-3.0-or-later",
   "dependencies": {
     "hnswlib-node": "^3.0.0",
-    "kromosynth": "^1.0.29",
+    "kromosynth": "^1.0.35",
     "minimist": "^1.2.8",
     "ws": "^8.14.1"
   },
