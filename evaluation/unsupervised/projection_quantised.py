@@ -157,13 +157,37 @@ async def socket_server(websocket, path):
         # if projection is defined
         if 'projection' in locals():
             print('projection', projection)
-
-            projection_min = projection.min()
-            projection_max = projection.max()
-            if request_path not in cell_range_min_for_projection or cell_range_min_for_projection[request_path] > projection_min:
-                cell_range_min_for_projection[request_path] = projection_min
-            if request_path not in cell_range_max_for_projection or cell_range_max_for_projection[request_path] < projection_max:
-                cell_range_max_for_projection[request_path] = projection_max
+            print('projection shape:', projection.shape)
+            print('projection type:', type(projection))
+            
+            try:
+                if projection.size == 0:
+                    print("Warning: Empty projection array received")
+                    # Use default range of [0,1] for empty projections
+                    projection_min = 0
+                    projection_max = 1
+                else:
+                    projection_min = projection.min()
+                    projection_max = projection.max()
+                    
+                if request_path not in cell_range_min_for_projection or cell_range_min_for_projection[request_path] > projection_min:
+                    cell_range_min_for_projection[request_path] = projection_min
+                if request_path not in cell_range_max_for_projection or cell_range_max_for_projection[request_path] < projection_max:
+                    cell_range_max_for_projection[request_path] = projection_max
+            
+            except Exception as e:
+                print(f"Error processing projection range: {str(e)}")
+                print(f"Projection details:")
+                print(f"- Shape: {projection.shape if hasattr(projection, 'shape') else 'no shape'}")
+                print(f"- Size: {projection.size if hasattr(projection, 'size') else 'no size'}")
+                print(f"- Type: {type(projection)}")
+                # Fall back to default range
+                projection_min = 0
+                projection_max = 1
+                if request_path not in cell_range_min_for_projection:
+                    cell_range_min_for_projection[request_path] = projection_min
+                if request_path not in cell_range_max_for_projection:
+                    cell_range_max_for_projection[request_path] = projection_max
         
 
             # taking min/max of the projection values doesn't work, when there is just one (or few) vectors incoming - fixing to the range 0 to 1 for now:
@@ -204,7 +228,17 @@ async def socket_server(websocket, path):
         
     except Exception as e:
         print('Error in projection_quantised.py:', e)
-        response = {'status': 'ERROR' + str(e)}
+        print('Traceback:')
+        import traceback
+        traceback.print_exc()
+        
+        # Include error details in response
+        error_info = {
+            'error_type': type(e).__name__,
+            'error_message': str(e),
+            'traceback': traceback.format_exc()
+        }
+        response = {'status': 'ERROR', 'error_details': error_info}
         await websocket.send(json.dumps(response))
         return
 
