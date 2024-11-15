@@ -1,7 +1,5 @@
 # similarity / distance measurements for embeddings / sets of feature vectors
 
-# TODO - just cosine similarity for now, but we could add more metrics such as Euclidean distance, etc.
-
 import asyncio
 import websockets
 import json
@@ -14,14 +12,85 @@ from urllib.parse import urlparse, parse_qs
 from scipy.spatial.distance import cosine, euclidean
 from sklearn.preprocessing import StandardScaler
 
+from typing import Dict, Tuple, List
+import glob
+import pathlib
+
 import sys
 sys.path.append('../..')
 from evaluation.util import filepath_to_port
+import gzip
 
 def str_to_bool(s):
     return s.lower() in ['true', '1', 't', 'y', 'yes']
 
 reference_embeddings = {}
+
+### Z-score normalization - begin ###
+normalization_stats: Dict[str, Tuple[np.ndarray, np.ndarray]] = {}  # (mean, std) pairs
+
+def load_features_from_file(path: str, feature_key: str) -> List[np.ndarray]:
+    """Load all feature sets from a single JSON or JSON.GZ file."""
+    open_func = gzip.open if path.endswith('.gz') else open
+    with open_func(path, 'rt') as f:
+        feature_sets = json.load(f)
+    features = []
+    for feature_set in feature_sets:
+        try:
+            features.append(np.array(feature_set[feature_key]))
+        except KeyError:
+            print(f"KeyError: '{feature_key}' not found in feature set from file {path}")
+    return features
+
+def load_features_from_directory(directory: str, feature_key: str) -> List[np.ndarray]:
+    """Recursively load features from all JSON files in directory."""
+    features = []
+    for json_file in glob.glob(f"{directory}/**/*.json", recursive=True):
+        with open(json_file, 'r') as f:
+            features_dict = json.load(f)
+            try:
+                features.append(np.array(features_dict[feature_key]))
+            except KeyError:
+                print(f"KeyError: '{feature_key}' not found in feature set from file {json_file}")
+    return features
+
+def compute_global_statistics(ref_paths: List[str], train_file_path: str, feature_key: str) -> Tuple[np.ndarray, np.ndarray]:
+    """
+    Compute global mean and std from reference directories and training file
+    """
+    all_features = []
+    
+    # Load features from reference paths
+    for ref_path in ref_paths:
+        all_features.extend(load_features_from_directory(ref_path.strip(), feature_key))
+    
+    # Load features from training file
+    if train_file_path:
+        all_features.extend(load_features_from_file(train_file_path, feature_key))
+    
+    # Convert to numpy array for calculations
+    features_array = np.vstack(all_features)
+    
+    # Compute statistics
+    global_mean = np.mean(features_array, axis=0)
+    global_std = np.std(features_array, axis=0)
+    global_std[global_std == 0] = 1.0  # Prevent division by zero
+    
+    return global_mean, global_std
+
+def get_normalization_key(ref_paths: str, train_file_path: str) -> str:
+    """Create unique key for normalization statistics."""
+    paths = sorted([p.strip() for p in ref_paths.split(',')]) if ref_paths else []
+    if train_file_path:
+        paths.append(train_file_path)
+    return ','.join(paths)
+
+def z_score_normalize(features: np.ndarray, mean: np.ndarray, std: np.ndarray) -> np.ndarray:
+    """Apply Z-score normalization to features."""
+    return (features - mean) / std
+### Z-score normalization - end ###
+
+
 def cosine_similarity(query_embedding, reference_embedding):
     cosine_dissimilarity = cosine(query_embedding.flatten(), reference_embedding.flatten())
     return 1 - (cosine_dissimilarity / 2)
@@ -110,7 +179,7 @@ def get_similarity(query_embedding, reference_embedding):
     return similarity * scaling_factor
 
 async def socket_server(websocket, path):
-    global reference_embeddings
+    global reference_embeddings, normalization_stats
     url_components = urlparse(path)
     request_path = url_components.path
     query_params = parse_qs(url_components.query)
@@ -122,9 +191,14 @@ async def socket_server(websocket, path):
         reference_embedding_path = query_params.get('reference_embedding_path', [None])[0]
         reference_embedding_key = query_params.get('reference_embedding_key', [None])[0]
         transformation_power = query_params.get('transformation_power', [None])[0]
+        
+        z_score_normalisation_reference_features_paths = query_params.get('zScoreNormalisationReferenceFeaturesPaths', [None])[0]
+        z_score_normalisation_train_features_file_path = query_params.get('zScoreNormalisationTrainFeaturesPath', [None])[0]
+
         if transformation_power is not None:
             transformation_power = float(transformation_power)
         
+        # Load reference embeddings
         if reference_embedding_path is not None and os.path.exists(reference_embedding_path) and reference_embedding_path not in reference_embeddings:
             print(f"Loading reference embeddings from {reference_embedding_path}")
             with open(reference_embedding_path, 'r') as f:
@@ -139,6 +213,29 @@ async def socket_server(websocket, path):
         else:
             reference_embedding = np.array(reference_embeddings[reference_embedding_path][reference_embedding_key])
         
+        # Apply Z-score normalization if paths are provided
+        if z_score_normalisation_reference_features_paths or z_score_normalisation_train_features_file_path:
+            norm_key = get_normalization_key(
+                z_score_normalisation_reference_features_paths,
+                z_score_normalisation_train_features_file_path
+            )
+            
+            if norm_key not in normalization_stats:
+                print(f"Computing global statistics for {norm_key}")
+                ref_paths = z_score_normalisation_reference_features_paths.split(',') if z_score_normalisation_reference_features_paths else []
+                mean, std = compute_global_statistics(
+                    ref_paths,
+                    z_score_normalisation_train_features_file_path,
+                    reference_embedding_key
+                )
+                normalization_stats[norm_key] = (mean, std)
+            
+            # Apply normalization
+            mean, std = normalization_stats[norm_key]
+            query_embedding = z_score_normalize(query_embedding, mean, std)
+            reference_embedding = z_score_normalize(reference_embedding, mean, std)
+        
+        # Compute similarity using existing methods
         if request_path == '/cosine':
             fitness = cosine_similarity(query_embedding, reference_embedding)
         elif request_path == '/improved_cosine':

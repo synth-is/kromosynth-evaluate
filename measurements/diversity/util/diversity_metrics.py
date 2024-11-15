@@ -82,6 +82,8 @@ def calculate_performance_spread(feature_vectors, fitness_values):
     # Normalize feature vectors to the range [0, 99]
     for fv, fitness in zip(feature_vectors, fitness_values):
         x, y = np.clip(fv, 0, 99).astype(int)  # Ensure indices are within the valid range
+        if fitness is None:
+            fitness = 0
         grid[x, y] = max(grid[x, y], fitness)
 
     return {
