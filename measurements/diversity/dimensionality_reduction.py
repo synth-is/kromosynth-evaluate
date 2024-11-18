@@ -191,66 +191,116 @@ def calculate_surprise_score(reconstruction_loss, max_reconstruction_error, feat
     
     return 1 / (1 + np.exp(-alpha * (adjusted_loss - 0.5)))
 
-def get_pca_projection(features, n_components=2, should_fit=True, evorun_dir='', calculate_surprise=False, components_list=[], use_autoencoder=False):
+def get_pca_projection(features, n_components=2, should_fit=True, evorun_dir='', calculate_surprise=False, components_list=[], use_autoencoder=False, dynamic_components=False):
     model_manager = get_model_manager(evorun_dir)
     
     # Type checking and conversion
     if isinstance(features, list):
-        features = np.array(features, dtype=np.float32)  # Specify dtype to potentially reduce memory usage
+        features = np.array(features, dtype=np.float32)
     elif not isinstance(features, np.ndarray):
         raise ValueError(f"Unrecognized data type for features: {type(features)}")
     
     print(f"Features shape: {features.shape}")
     print(f"Features dtype: {features.dtype}")
     
+    # Initialize variables for feature and PCA analysis
+    feature_contribution = None
+    feature_indices = None
+    selected_pca_components = None
+    
     if should_fit:
         print('Fitting PCA model...')
-        if len(components_list) > 0:
-            model_manager.pca = PCA()
-        else:
-            model_manager.pca = PCA(n_components=n_components)
+        # First fit PCA with all components
+        model_manager.pca = PCA()
         model_manager.pca.fit(features)
         
-        model_manager.scaler = MinMaxScaler(feature_range=(0, 1))
-        transformed = model_manager.pca.transform(features)
-        model_manager.scaler.fit(transformed)
-        del transformed  # Clear this variable as it's no longer needed
+        # Analyze feature contributions to PCA components
+        # Get the absolute values of component loadings
+        loadings = np.abs(model_manager.pca.components_)
         
+        # Calculate the contribution of each input feature
+        feature_contribution = np.mean(loadings, axis=0)
+        
+        # Select features based on their contributions
+        # Here we use a threshold based on the mean contribution
+        threshold = np.mean(feature_contribution)
+        feature_indices = np.where(feature_contribution > threshold)[0]
+        
+        # If components_list is empty, select the most informative PCA components
+        if len(components_list) == 0:
+            # Calculate the cumulative explained variance ratio
+            cumsum = np.cumsum(model_manager.pca.explained_variance_ratio_)
+            # Select components that explain up to 95% of variance
+            n_components_95 = np.argmax(cumsum >= 0.95) + 1
+            # Take either n_components or the number needed for 95% variance, whichever is smaller
+            n_select = min(n_components, n_components_95)
+            components_list = list(range(n_select))
+        
+        selected_pca_components = components_list
+        
+        # Create new PCA model with selected components
+        if len(components_list) > 0 and dynamic_components:
+            model_manager.pca = PCA(n_components=len(components_list))
+            # Use only selected features
+            features_selected = features[:, feature_indices]
+            model_manager.pca.fit(features_selected)
+        else:
+            model_manager.pca = PCA(n_components=n_components)
+            model_manager.pca.fit(features)
+            feature_indices = None  # Reset feature_indices if not using dynamic components
+        
+        model_manager.scaler = MinMaxScaler(feature_range=(0, 1))
+        # Check if feature_indices exists and is not None before trying to use it
+        features_to_transform = features[:, feature_indices] if feature_indices is not None and len(feature_indices) > 0 else features
+        transformed = model_manager.pca.transform(features_to_transform)
+        model_manager.scaler.fit(transformed)
+        del transformed
+        
+        # Handle surprise calculation (existing code)
         if calculate_surprise and use_autoencoder:
             if model_manager.pca_autoencoder is None:
                 print('Initializing PCA autoencoder for surprise calculation...')
-                model_manager.pca_autoencoder, model_manager.pca_encoder = create_pca_autoencoder(features.shape[1], n_components, random_state=42)
-            
+                model_manager.pca_autoencoder, model_manager.pca_encoder = create_pca_autoencoder(
+                    len(feature_indices) if len(feature_indices) > 0 else features.shape[1],
+                    n_components, 
+                    random_state=42
+                )
             print('Fine-tuning PCA autoencoder...')
-            model_manager.pca_autoencoder.fit(features, features, epochs=10, batch_size=64, verbose=0)
+            features_for_ae = features[:, feature_indices] if len(feature_indices) > 0 else features
+            model_manager.pca_autoencoder.fit(features_for_ae, features_for_ae, epochs=10, batch_size=64, verbose=0)
         
         if calculate_surprise:
+            features_for_surprise = features[:, feature_indices] if len(feature_indices) > 0 else features
             if use_autoencoder and model_manager.pca_autoencoder is not None:
-                all_reconstruction_losses = calculate_reconstruction_loss(model_manager.pca_autoencoder, features)
+                all_reconstruction_losses = calculate_reconstruction_loss(model_manager.pca_autoencoder, features_for_surprise)
             else:
-                all_reconstruction_losses = calculate_reconstruction_loss(model_manager.pca, features)
+                all_reconstruction_losses = calculate_reconstruction_loss(model_manager.pca, features_for_surprise)
             model_manager.max_reconstruction_error = np.max(all_reconstruction_losses)
-            model_manager.max_complexity = np.max([calculate_complexity(f) for f in features])
-            model_manager.max_smoothness = np.max([calculate_smoothness(f) for f in features])
-            del all_reconstruction_losses  # Clear this variable
+            model_manager.max_complexity = np.max([calculate_complexity(f) for f in features_for_surprise])
+            model_manager.max_smoothness = np.max([calculate_smoothness(f) for f in features_for_surprise])
+            del all_reconstruction_losses
         
         model_manager.save_model()
     else:
         model_manager.load_model()
 
-    # Always use PCA for projection
-    transformed = model_manager.pca.transform(features)
+    # Use selected features for transformation
+    features_to_transform = features[:, feature_indices] if feature_indices is not None else features
+    transformed = model_manager.pca.transform(features_to_transform)
     scaled = model_manager.scaler.transform(transformed)
-    del transformed  # Clear this variable
+    del transformed
 
     if len(components_list) > 0:
         scaled = scaled[:, components_list]
 
+    # Calculate surprise scores if requested
+    surprise_scores = None
     if calculate_surprise and model_manager.max_reconstruction_error is not None:
+        features_for_surprise = features[:, feature_indices] if feature_indices is not None else features
         if use_autoencoder and model_manager.pca_autoencoder is not None:
-            reconstruction_losses = calculate_reconstruction_loss(model_manager.pca_autoencoder, features)
+            reconstruction_losses = calculate_reconstruction_loss(model_manager.pca_autoencoder, features_for_surprise)
         else:
-            reconstruction_losses = calculate_reconstruction_loss(model_manager.pca, features)
+            reconstruction_losses = calculate_reconstruction_loss(model_manager.pca, features_for_surprise)
         
         surprise_scores = np.array([
             calculate_surprise_score(
@@ -260,12 +310,15 @@ def get_pca_projection(features, n_components=2, should_fit=True, evorun_dir='',
                 model_manager.max_complexity or 1, 
                 model_manager.max_smoothness or 1
             )
-            for loss, feature in zip(reconstruction_losses, features)
+            for loss, feature in zip(reconstruction_losses, features_for_surprise)
         ])
-        del reconstruction_losses  # Clear this variable
-        return scaled, surprise_scores
-    else:
-        return scaled, None
+        del reconstruction_losses
+
+    return (scaled, 
+            surprise_scores, 
+            feature_contribution, 
+            feature_indices, 
+            selected_pca_components)
 
 def get_autoencoder_projection(features, n_components=2, should_fit=True, evorun_dir='', calculate_surprise=False, random_state=42):
     model_manager = get_model_manager(evorun_dir)

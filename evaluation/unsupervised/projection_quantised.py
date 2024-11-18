@@ -49,12 +49,10 @@ cell_range_max_for_projection = {}
 async def socket_server(websocket, path):
     global cell_range_min_for_projection
     global cell_range_max_for_projection
-    # start time
     start = time.time()
     try:
         data = await websocket.recv()
-
-        jsonData = json.loads(data)  # receive JSON
+        jsonData = json.loads(data)
 
         feature_vectors = jsonData.get('feature_vectors', [])
         should_fit = jsonData.get('should_fit', False)
@@ -68,39 +66,49 @@ async def socket_server(websocket, path):
         url_components = urlparse(path)
         request_path = url_components.path
 
+        # Handle different endpoints
         if request_path == '/pca':
             pca_components = jsonData.get('pca_components')
-            # parse the comma separated string of dimensions into a list of integers, if it is not empty
-            if pca_components is not None and pca_components != '':
-                components_list = list(map(int, pca_components.split(',')))
-            else:
-                components_list = []
-            projection, surprise_scores = projection_with_cleanup(
+            components_list = list(map(int, pca_components.split(','))) if pca_components and pca_components != '' else []
+            dynamic_components = jsonData.get('dynamic_components', False)
+            
+            result = projection_with_cleanup(
                 get_pca_projection,
-                feature_vectors, dimensions, should_fit, evorun_dir, calculate_surprise, components_list, use_autoencoder_for_surprise
+                feature_vectors, dimensions, should_fit, evorun_dir, 
+                calculate_surprise, components_list, use_autoencoder_for_surprise,
+                dynamic_components=dynamic_components
             )
-            # get_pca_projection(feature_vectors, dimensions, should_fit, evorun_dir, calculate_surprise, components_list, use_autoencoder_for_surprise)
-            # if use_autoencoder_for_surprise:
-                # clear_tf_session()
+            # Unpack the returned values
+            projection, surprise_scores, feature_contribution, feature_indices, selected_pca_components = result
+            
         elif request_path == '/autoencoder':
             projection, surprise_scores = projection_with_cleanup(
                 get_autoencoder_projection,
                 feature_vectors, dimensions, should_fit, evorun_dir, calculate_surprise
             )
-            # get_autoencoder_projection(feature_vectors, dimensions, should_fit, evorun_dir, calculate_surprise)
-            # clear_tf_session()
+            # Set these to None for non-PCA endpoints
+            feature_contribution = None
+            feature_indices = None
+            selected_pca_components = None
+            
         elif request_path == '/umap':
             projection, surprise_scores = projection_with_cleanup(
                 get_umap_projection,
                 feature_vectors, dimensions, should_fit, evorun_dir, calculate_surprise,
                 metric='cosine'
             )
-            #get_umap_projection(feature_vectors, dimensions, should_fit, evorun_dir, calculate_surprise, 
-            #                                                 metric='cosine')
-            # clear_tf_session()
+            # Set these to None for non-PCA endpoints
+            feature_contribution = None
+            feature_indices = None
+            selected_pca_components = None
+            
         elif request_path == '/raw':
             projection = np.array(feature_vectors)
             surprise_scores = None
+            # Set these to None for non-PCA endpoints
+            feature_contribution = None
+            feature_indices = None
+            selected_pca_components = None
 
 
         elif request_path == '/diversity_metrics':
@@ -147,14 +155,12 @@ async def socket_server(websocket, path):
         #     response = {'status': 'OK', 'message': 'Visualizations created successfully'}
 
         if should_fit:
-            # delete the entry for the request_path in cell_range_min_for_projection and cell_range_max_for_projection
             if request_path in cell_range_min_for_projection:
                 del cell_range_min_for_projection[request_path]
             if request_path in cell_range_max_for_projection:
                 del cell_range_max_for_projection[request_path]
 
-
-        # if projection is defined
+        # Process projection if it exists
         if 'projection' in locals():
             print('projection', projection)
             print('projection shape:', projection.shape)
@@ -163,7 +169,6 @@ async def socket_server(websocket, path):
             try:
                 if projection.size == 0:
                     print("Warning: Empty projection array received")
-                    # Use default range of [0,1] for empty projections
                     projection_min = 0
                     projection_max = 1
                 else:
@@ -181,35 +186,24 @@ async def socket_server(websocket, path):
                 print(f"- Shape: {projection.shape if hasattr(projection, 'shape') else 'no shape'}")
                 print(f"- Size: {projection.size if hasattr(projection, 'size') else 'no size'}")
                 print(f"- Type: {type(projection)}")
-                # Fall back to default range
                 projection_min = 0
                 projection_max = 1
                 if request_path not in cell_range_min_for_projection:
                     cell_range_min_for_projection[request_path] = projection_min
                 if request_path not in cell_range_max_for_projection:
                     cell_range_max_for_projection[request_path] = projection_max
-        
 
-            # taking min/max of the projection values doesn't work, when there is just one (or few) vectors incoming - fixing to the range 0 to 1 for now:
-            # cell_range_min = projection.min()
-            # cell_range_max = projection.max()
-            # cell_range_min = 0
-            # cell_range_max = 1
             cell_range_min = cell_range_min_for_projection[request_path]
             cell_range_max = cell_range_max_for_projection[request_path]
             print('cell_range_min', cell_range_min)
             print('cell_range_max', cell_range_max)
-            # discretise / quantise the projection
-            # for each element in the projection, calculate the index of the cell it belongs to
-            # scale the range of each cell value to the range 0 to 1 with a call like:
-            # vector_to_index(v, cell_range_min, cell_range_max, cells, dimensions)
-            cells = args.dimension_cells
-            discretised_projection = []
-            for element in projection:
-                discretised_vector = vector_to_index(element, cell_range_min, cell_range_max, cells, dimensions)
-                print('discretised_vector', discretised_vector)
-                discretised_projection.append(discretised_vector)
 
+            # Discretize projection
+            cells = args.dimension_cells
+            discretised_projection = [
+                vector_to_index(element, cell_range_min, cell_range_max, cells, dimensions)
+                for element in projection
+            ]
             print('discretised_projection size: ', len(discretised_projection))
 
             if calculate_novelty:
@@ -217,13 +211,17 @@ async def socket_server(websocket, path):
             else:
                 novelty_scores = None
 
-        # if 'response' not in locals(): # endpoints /pca, /umap, /raw - TODO clean up
+            # Prepare response with all fields
             response = {
-                'status': 'OK', 
-                'feature_map': discretised_projection, 
+                'status': 'OK',
+                'feature_map': discretised_projection,
+                'feature_contribution': feature_contribution.tolist() if feature_contribution is not None else None,
+                'feature_indices': feature_indices.tolist() if feature_indices is not None else None,
+                'pca_components': selected_pca_components if selected_pca_components is not None else None,
                 'surprise_scores': surprise_scores.tolist() if surprise_scores is not None else None,
                 'novelty_scores': novelty_scores.tolist() if novelty_scores is not None else None
-                }
+            }
+
         await websocket.send(json.dumps(response))
         
     except Exception as e:
