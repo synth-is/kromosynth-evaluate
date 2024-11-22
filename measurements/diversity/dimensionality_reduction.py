@@ -191,7 +191,9 @@ def calculate_surprise_score(reconstruction_loss, max_reconstruction_error, feat
     
     return 1 / (1 + np.exp(-alpha * (adjusted_loss - 0.5)))
 
-def get_pca_projection(features, n_components=2, should_fit=True, evorun_dir='', calculate_surprise=False, components_list=[], use_autoencoder=False, dynamic_components=False):
+def get_pca_projection(features, n_components=2, should_fit=True, evorun_dir='', calculate_surprise=False, 
+                      components_list=[], use_autoencoder=False, dynamic_components=False,
+                      selection_strategy='improved', selection_params=None):
     model_manager = get_model_manager(evorun_dir)
     
     # Type checking and conversion
@@ -206,97 +208,131 @@ def get_pca_projection(features, n_components=2, should_fit=True, evorun_dir='',
     # Initialize variables for feature and PCA analysis
     feature_contribution = None
     feature_indices = None
-    selected_pca_components = None
+    selected_pca_components = components_list
     
     if should_fit:
         print('Fitting PCA model...')
-        # First fit PCA with all components
-        model_manager.pca = PCA()
-        model_manager.pca.fit(features)
         
-        # Analyze feature contributions to PCA components
-        # Get the absolute values of component loadings
-        loadings = np.abs(model_manager.pca.components_)
+        if dynamic_components:
+            # First fit PCA with all components to analyze contributions
+            model_manager.pca = PCA()
+            model_manager.pca.fit(features)
+            
+            # Analyze feature contributions
+            loadings = np.abs(model_manager.pca.components_)
+            feature_contribution = np.mean(loadings, axis=0)
+            
+            # Set up selection parameters
+            if selection_strategy == 'original': # "original" seems to eventually result in zero length feature indices
+                threshold = np.mean(feature_contribution)
+                if selection_params and 'threshold_multiplier' in selection_params:
+                    threshold *= selection_params['threshold_multiplier']
+                feature_indices = np.where(feature_contribution > threshold)[0]
+                
+            elif selection_strategy == 'improved':
+                min_features_pct = selection_params.get('min_features_pct', 0.1) if selection_params else 0.1
+                variance_threshold = selection_params.get('variance_threshold', 0.95) if selection_params else 0.95
+                use_sliding_window = selection_params.get('use_sliding_window', True) if selection_params else False
+                
+                if len(feature_contribution) > 0:
+                    sorted_indices = np.argsort(feature_contribution)[::-1]
+                    n_features = len(feature_contribution)
+                    min_features = max(2, int(n_features * min_features_pct))
+                    
+                    cumsum_contrib = np.cumsum(feature_contribution[sorted_indices])
+                    cumsum_contrib /= cumsum_contrib[-1]
+                    n_features_variance = np.argmax(cumsum_contrib >= variance_threshold) + 1
+                    n_features_keep = max(min_features, n_features_variance)
+                    
+                    current_features = sorted_indices[:n_features_keep]
+                    
+                    if use_sliding_window and hasattr(model_manager, 'previous_feature_indices'):
+                        previous_features = model_manager.previous_feature_indices
+                        stable_features = np.union1d(
+                            current_features,
+                            np.intersect1d(previous_features, sorted_indices[:len(previous_features)])
+                        )
+                        feature_indices = stable_features
+                    else:
+                        feature_indices = current_features
+                    
+                    if use_sliding_window:
+                        model_manager.previous_feature_indices = feature_indices
+                    
+                    if len(feature_indices) < 2:
+                        print("Warning: Too few features selected, using top 2 features")
+                        feature_indices = sorted_indices[:2]
+                        
+                # Log selection details
+                print(f"Strategy: {selection_strategy}")
+                print(f"Features selected: {len(feature_indices)}")
+                if len(feature_indices) > 0:
+                    print(f"Avg contribution: {np.mean(feature_contribution[feature_indices]):.4f}")
+                    print(f"Min/Max contrib: {np.min(feature_contribution[feature_indices]):.4f} / {np.max(feature_contribution[feature_indices]):.4f}")
+            else:
+                raise ValueError(f"Unknown selection strategy: {selection_strategy}")
         
-        # Calculate the contribution of each input feature
-        feature_contribution = np.mean(loadings, axis=0)
+        # Create new PCA model
+        features_to_use = features[:, feature_indices] if dynamic_components and feature_indices is not None else features
         
-        # Select features based on their contributions
-        # Here we use a threshold based on the mean contribution
-        threshold = np.mean(feature_contribution)
-        feature_indices = np.where(feature_contribution > threshold)[0]
-        
-        # If components_list is empty, select the most informative PCA components
         if len(components_list) == 0:
-            # Calculate the cumulative explained variance ratio
             cumsum = np.cumsum(model_manager.pca.explained_variance_ratio_)
-            # Select components that explain up to 95% of variance
             n_components_95 = np.argmax(cumsum >= 0.95) + 1
-            # Take either n_components or the number needed for 95% variance, whichever is smaller
             n_select = min(n_components, n_components_95)
             components_list = list(range(n_select))
         
         selected_pca_components = components_list
-        
-        # Create new PCA model with selected components
+
         if len(components_list) > 0 and dynamic_components:
             model_manager.pca = PCA(n_components=len(components_list))
-            # Use only selected features
-            features_selected = features[:, feature_indices]
-            model_manager.pca.fit(features_selected)
         else:
             model_manager.pca = PCA(n_components=n_components)
-            model_manager.pca.fit(features)
-            feature_indices = None  # Reset feature_indices if not using dynamic components
         
+        model_manager.pca.fit(features_to_use)
+        
+        # Setup scaler
         model_manager.scaler = MinMaxScaler(feature_range=(0, 1))
-        # Check if feature_indices exists and is not None before trying to use it
-        features_to_transform = features[:, feature_indices] if feature_indices is not None and len(feature_indices) > 0 else features
-        transformed = model_manager.pca.transform(features_to_transform)
+        transformed = model_manager.pca.transform(features_to_use)
         model_manager.scaler.fit(transformed)
         del transformed
         
-        # Handle surprise calculation (existing code)
-        if calculate_surprise and use_autoencoder:
-            if model_manager.pca_autoencoder is None:
-                print('Initializing PCA autoencoder for surprise calculation...')
-                model_manager.pca_autoencoder, model_manager.pca_encoder = create_pca_autoencoder(
-                    len(feature_indices) if len(feature_indices) > 0 else features.shape[1],
-                    n_components, 
-                    random_state=42
-                )
-            print('Fine-tuning PCA autoencoder...')
-            features_for_ae = features[:, feature_indices] if len(feature_indices) > 0 else features
-            model_manager.pca_autoencoder.fit(features_for_ae, features_for_ae, epochs=10, batch_size=64, verbose=0)
-        
+        # Handle surprise calculation
         if calculate_surprise:
-            features_for_surprise = features[:, feature_indices] if len(feature_indices) > 0 else features
+            if use_autoencoder:
+                if model_manager.pca_autoencoder is None:
+                    print('Initializing PCA autoencoder...')
+                    model_manager.pca_autoencoder, model_manager.pca_encoder = create_pca_autoencoder(
+                        features_to_use.shape[1],
+                        n_components,
+                        random_state=42
+                    )
+                print('Fine-tuning PCA autoencoder...')
+                model_manager.pca_autoencoder.fit(features_to_use, features_to_use, epochs=10, batch_size=64, verbose=0)
+            
             if use_autoencoder and model_manager.pca_autoencoder is not None:
-                all_reconstruction_losses = calculate_reconstruction_loss(model_manager.pca_autoencoder, features_for_surprise)
+                all_reconstruction_losses = calculate_reconstruction_loss(model_manager.pca_autoencoder, features_to_use)
             else:
-                all_reconstruction_losses = calculate_reconstruction_loss(model_manager.pca, features_for_surprise)
+                all_reconstruction_losses = calculate_reconstruction_loss(model_manager.pca, features_to_use)
+            
             model_manager.max_reconstruction_error = np.max(all_reconstruction_losses)
-            model_manager.max_complexity = np.max([calculate_complexity(f) for f in features_for_surprise])
-            model_manager.max_smoothness = np.max([calculate_smoothness(f) for f in features_for_surprise])
+            model_manager.max_complexity = np.max([calculate_complexity(f) for f in features_to_use])
+            model_manager.max_smoothness = np.max([calculate_smoothness(f) for f in features_to_use])
             del all_reconstruction_losses
         
         model_manager.save_model()
     else:
         model_manager.load_model()
 
-    # Use selected features for transformation
-    features_to_transform = features[:, feature_indices] if feature_indices is not None else features
+    # Transform features using the fitted model
+    features_to_transform = features[:, feature_indices] if dynamic_components and feature_indices is not None else features
     transformed = model_manager.pca.transform(features_to_transform)
     scaled = model_manager.scaler.transform(transformed)
     del transformed
 
-    if len(components_list) > 0:
-        scaled = scaled[:, components_list]
-
     # Calculate surprise scores if requested
     surprise_scores = None
     if calculate_surprise and model_manager.max_reconstruction_error is not None:
-        features_for_surprise = features[:, feature_indices] if feature_indices is not None else features
+        features_for_surprise = features_to_transform
         if use_autoencoder and model_manager.pca_autoencoder is not None:
             reconstruction_losses = calculate_reconstruction_loss(model_manager.pca_autoencoder, features_for_surprise)
         else:
@@ -314,11 +350,7 @@ def get_pca_projection(features, n_components=2, should_fit=True, evorun_dir='',
         ])
         del reconstruction_losses
 
-    return (scaled, 
-            surprise_scores, 
-            feature_contribution, 
-            feature_indices, 
-            selected_pca_components)
+    return (scaled, surprise_scores, feature_contribution, feature_indices, selected_pca_components)
 
 def get_autoencoder_projection(features, n_components=2, should_fit=True, evorun_dir='', calculate_surprise=False, random_state=42):
     model_manager = get_model_manager(evorun_dir)

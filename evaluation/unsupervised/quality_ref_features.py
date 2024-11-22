@@ -195,6 +195,9 @@ async def socket_server(websocket, path):
         z_score_normalisation_reference_features_paths = query_params.get('zScoreNormalisationReferenceFeaturesPaths', [None])[0]
         z_score_normalisation_train_features_file_path = query_params.get('zScoreNormalisationTrainFeaturesPath', [None])[0]
 
+        dynamic_components = query_params.get('dynamicComponents', [False])[0]
+        feature_indices = query_params.get('featureIndices', [None])[0]
+
         if transformation_power is not None:
             transformation_power = float(transformation_power)
         
@@ -235,6 +238,11 @@ async def socket_server(websocket, path):
             query_embedding = z_score_normalize(query_embedding, mean, std)
             reference_embedding = z_score_normalize(reference_embedding, mean, std)
         
+        if dynamic_components and feature_indices is not None:
+            feature_indices = [int(i) for i in feature_indices.split(',')]
+            query_embedding = query_embedding[feature_indices]
+            reference_embedding = reference_embedding[feature_indices]
+
         # Compute similarity using existing methods
         if request_path == '/cosine':
             fitness = cosine_similarity(query_embedding, reference_embedding)

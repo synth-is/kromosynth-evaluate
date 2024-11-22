@@ -69,14 +69,19 @@ async def socket_server(websocket, path):
         # Handle different endpoints
         if request_path == '/pca':
             pca_components = jsonData.get('pca_components')
-            components_list = list(map(int, pca_components.split(','))) if pca_components and pca_components != '' else []
             dynamic_components = jsonData.get('dynamic_components', False)
+            selection_strategy = jsonData.get('selection_strategy', 'improved')
+            selection_params = jsonData.get('selection_params', None)
+            
+            components_list = list(map(int, pca_components.split(','))) if pca_components and pca_components != '' else []
             
             result = projection_with_cleanup(
                 get_pca_projection,
                 feature_vectors, dimensions, should_fit, evorun_dir, 
                 calculate_surprise, components_list, use_autoencoder_for_surprise,
-                dynamic_components=dynamic_components
+                dynamic_components=dynamic_components,
+                selection_strategy=selection_strategy,
+                selection_params=selection_params
             )
             # Unpack the returned values
             projection, surprise_scores, feature_contribution, feature_indices, selected_pca_components = result
