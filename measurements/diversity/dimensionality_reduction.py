@@ -275,7 +275,7 @@ def get_pca_projection(features, n_components=2, should_fit=True, evorun_dir='',
         # Create new PCA model
         features_to_use = features[:, feature_indices] if dynamic_components and feature_indices is not None else features
         
-        if len(components_list) == 0:
+        if len(components_list) == 0 and dynamic_components:
             cumsum = np.cumsum(model_manager.pca.explained_variance_ratio_)
             n_components_95 = np.argmax(cumsum >= 0.95) + 1
             n_select = min(n_components, n_components_95)
