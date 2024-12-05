@@ -244,7 +244,7 @@ async def socket_server(websocket, path):
 
             print('Features extracted shape:', np.array(features).shape)
 
-            print('features:', features)
+            # print('features:', features)
 
             # print('MFCC features extracted:', features)
 

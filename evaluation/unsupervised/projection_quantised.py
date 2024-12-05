@@ -167,7 +167,7 @@ async def socket_server(websocket, path):
 
         # Process projection if it exists
         if 'projection' in locals():
-            print('projection', projection)
+            # print('projection', projection)
             print('projection shape:', projection.shape)
             print('projection type:', type(projection))
             
