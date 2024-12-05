@@ -236,6 +236,8 @@ def get_pca_projection(features, n_components=2, should_fit=True, evorun_dir='',
                 
                 if len(feature_contribution) > 0:
                     sorted_indices = np.argsort(feature_contribution)[::-1]
+                    # Reorder feature_contribution to match feature_indices order
+                    feature_contribution = feature_contribution[sorted_indices]
                     n_features = len(feature_contribution)
                     min_features = max(2, int(n_features * min_features_pct))
                     
@@ -430,14 +432,25 @@ def get_umap_projection(features, n_components=2, should_fit=True, evorun_dir=''
     features = np.array(features)
     n_samples = features.shape[0]
 
-    # Determine appropriate n_neighbors and batch size
-    original_n_neighbors = n_neighbors
-    if n_samples <= n_neighbors:
-        n_neighbors = max(2, n_samples - 1)
-        warnings.warn(f"n_neighbors ({original_n_neighbors}) is greater than or equal to n_samples ({n_samples}). "
-                      f"Reducing n_neighbors to {n_neighbors} for this projection.")
-    
+    # Special handling for very small datasets
+    if n_samples < 4:  # UMAP needs at least 4 samples to work reliably
+        print(f"Warning: Dataset too small for UMAP (n_samples={n_samples}). Falling back to PCA.")
+        # Always use should_fit=True for PCA fallback when in fitting mode
+        use_fit = True if should_fit else False
+        pca_result = get_pca_projection(
+            features, 
+            n_components=n_components, 
+            should_fit=use_fit, 
+            evorun_dir=evorun_dir, 
+            calculate_surprise=calculate_surprise
+        )
+        # Extract just the projection and surprise scores from PCA result
+        if calculate_surprise:
+            return pca_result[0], pca_result[1]
+        return pca_result[0], None
+
     if should_fit:
+        # Only proceed with UMAP fitting if we have enough samples
         input_dim = features.shape[1]
 
         if calculate_surprise:
