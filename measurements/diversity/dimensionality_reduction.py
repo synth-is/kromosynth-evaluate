@@ -209,6 +209,7 @@ def get_pca_projection(features, n_components=2, should_fit=True, evorun_dir='',
     feature_contribution = None
     feature_indices = None
     selected_pca_components = components_list
+    component_contribution = None  # New variable for component contributions
     
     if should_fit:
         print('Fitting PCA model...')
@@ -321,9 +322,22 @@ def get_pca_projection(features, n_components=2, should_fit=True, evorun_dir='',
             model_manager.max_smoothness = np.max([calculate_smoothness(f) for f in features_to_use])
             del all_reconstruction_losses
         
+        # Calculate component contributions after fitting PCA
+        component_contribution = {
+            'explained_variance_ratio': model_manager.pca.explained_variance_ratio_,
+            'cumulative_variance_ratio': np.cumsum(model_manager.pca.explained_variance_ratio_),
+            'singular_values': model_manager.pca.singular_values_
+        }
+
         model_manager.save_model()
     else:
         model_manager.load_model()
+        # Get component contributions from loaded model
+        component_contribution = {
+            'explained_variance_ratio': model_manager.pca.explained_variance_ratio_,
+            'cumulative_variance_ratio': np.cumsum(model_manager.pca.explained_variance_ratio_),
+            'singular_values': model_manager.pca.singular_values_
+        }
 
     # Transform features using the fitted model
     features_to_transform = features[:, feature_indices] if dynamic_components and feature_indices is not None else features
@@ -352,7 +366,7 @@ def get_pca_projection(features, n_components=2, should_fit=True, evorun_dir='',
         ])
         del reconstruction_losses
 
-    return (scaled, surprise_scores, feature_contribution, feature_indices, selected_pca_components)
+    return (scaled, surprise_scores, feature_contribution, feature_indices, selected_pca_components, component_contribution)
 
 def get_autoencoder_projection(features, n_components=2, should_fit=True, evorun_dir='', calculate_surprise=False, random_state=42):
     model_manager = get_model_manager(evorun_dir)
