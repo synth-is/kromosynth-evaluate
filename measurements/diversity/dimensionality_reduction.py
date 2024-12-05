@@ -209,7 +209,7 @@ def get_pca_projection(features, n_components=2, should_fit=True, evorun_dir='',
     feature_contribution = None
     feature_indices = None
     selected_pca_components = components_list
-    component_contribution = None  # New variable for component contributions
+    component_contribution = None
     
     if should_fit:
         print('Fitting PCA model...')
@@ -323,6 +323,28 @@ def get_pca_projection(features, n_components=2, should_fit=True, evorun_dir='',
             del all_reconstruction_losses
         
         # Calculate component contributions after fitting PCA
+            # - explained_variance_ratio_:
+            # Shows how much of the total variance in the data is explained by each principal component
+            # Values are between 0 and 1 (or 0-100%)
+            # Sum of all ratios equals 1 (100%)
+            # Higher values indicate more important components
+            # Example: [0.5, 0.3, 0.15, 0.05] means the first component explains 50% of variance, second 30%, etc.
+            # - cumulative_variance_ratio:
+            # Running sum of explained_variance_ratio_
+            # Shows total variance explained up to each component
+            # Helps determine how many components to keep
+            # Always increases, reaching 1.0 (100%) at the end
+            # Example: [0.5, 0.8, 0.95, 1.0] means first two components together explain 80% of variance
+            # - singular_values_:
+            # Square roots of eigenvalues from the SVD (Singular Value Decomposition)
+            # Represent the "strength" or "scale" of each principal component
+            # Larger values indicate more important components
+            # Not normalized (unlike variance ratios)
+            # Related to explained variance: (singular_value²) / (n_samples - 1) = explained_variance
+            # - Key differences:
+            # explained_variance_ratio_ is normalized (0-1) and shows relative importance
+            # cumulative_variance_ratio shows accumulated explanation power
+            # singular_values_ shows absolute scale/magnitude of components in the original data space
         component_contribution = {
             'explained_variance_ratio': model_manager.pca.explained_variance_ratio_,
             'cumulative_variance_ratio': np.cumsum(model_manager.pca.explained_variance_ratio_),

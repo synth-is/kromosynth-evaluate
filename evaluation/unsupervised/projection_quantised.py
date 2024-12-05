@@ -84,7 +84,7 @@ async def socket_server(websocket, path):
                 selection_params=selection_params
             )
             # Unpack the returned values
-            projection, surprise_scores, feature_contribution, feature_indices, selected_pca_components = result
+            projection, surprise_scores, feature_contribution, feature_indices, selected_pca_components, component_contribution = result
             
         elif request_path == '/autoencoder':
             projection, surprise_scores = projection_with_cleanup(
@@ -95,6 +95,7 @@ async def socket_server(websocket, path):
             feature_contribution = None
             feature_indices = None
             selected_pca_components = None
+            component_contribution = None
             
         elif request_path == '/umap':
             projection, surprise_scores = projection_with_cleanup(
@@ -106,6 +107,7 @@ async def socket_server(websocket, path):
             feature_contribution = None
             feature_indices = None
             selected_pca_components = None
+            component_contribution = None
             
         elif request_path == '/raw':
             projection = np.array(feature_vectors)
@@ -114,6 +116,7 @@ async def socket_server(websocket, path):
             feature_contribution = None
             feature_indices = None
             selected_pca_components = None
+            component_contribution = None
 
 
         elif request_path == '/diversity_metrics':
@@ -145,7 +148,8 @@ async def socket_server(websocket, path):
             stage = jsonData.get('stage', '')  # 'before' or 'after'
             feature_vectors = jsonData['feature_vectors']
             fitness_values = jsonData['fitness_values']
-            performance_spread = calculate_performance_spread(feature_vectors, fitness_values)
+            classification_dimensions = jsonData.get('classification_dimensions', None)
+            performance_spread = calculate_performance_spread(feature_vectors, fitness_values, classification_dimensions)
             response = {
                 'status': 'OK', 'performance_spread': performance_spread,
                 'generation': generation,
@@ -223,6 +227,7 @@ async def socket_server(websocket, path):
                 'feature_contribution': feature_contribution.tolist() if feature_contribution is not None else None,
                 'feature_indices': feature_indices.tolist() if feature_indices is not None else None,
                 'pca_components': selected_pca_components if selected_pca_components is not None else None,
+                'component_contribution': {k: v.tolist() for k, v in component_contribution.items()} if component_contribution is not None else None,
                 'surprise_scores': surprise_scores.tolist() if surprise_scores is not None else None,
                 'novelty_scores': novelty_scores.tolist() if novelty_scores is not None else None
             }
