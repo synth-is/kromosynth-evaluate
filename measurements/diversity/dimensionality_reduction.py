@@ -209,6 +209,7 @@ def get_pca_projection(features, n_components=2, should_fit=True, evorun_dir='',
     feature_contribution = None
     feature_indices = None
     selected_pca_components = components_list
+    component_contribution = None
     
     if should_fit:
         print('Fitting PCA model...')
@@ -236,6 +237,8 @@ def get_pca_projection(features, n_components=2, should_fit=True, evorun_dir='',
                 
                 if len(feature_contribution) > 0:
                     sorted_indices = np.argsort(feature_contribution)[::-1]
+                    # Reorder feature_contribution to match feature_indices order
+                    feature_contribution = feature_contribution[sorted_indices]
                     n_features = len(feature_contribution)
                     min_features = max(2, int(n_features * min_features_pct))
                     
@@ -319,9 +322,44 @@ def get_pca_projection(features, n_components=2, should_fit=True, evorun_dir='',
             model_manager.max_smoothness = np.max([calculate_smoothness(f) for f in features_to_use])
             del all_reconstruction_losses
         
+        # Calculate component contributions after fitting PCA
+            # - explained_variance_ratio_:
+            # Shows how much of the total variance in the data is explained by each principal component
+            # Values are between 0 and 1 (or 0-100%)
+            # Sum of all ratios equals 1 (100%)
+            # Higher values indicate more important components
+            # Example: [0.5, 0.3, 0.15, 0.05] means the first component explains 50% of variance, second 30%, etc.
+            # - cumulative_variance_ratio:
+            # Running sum of explained_variance_ratio_
+            # Shows total variance explained up to each component
+            # Helps determine how many components to keep
+            # Always increases, reaching 1.0 (100%) at the end
+            # Example: [0.5, 0.8, 0.95, 1.0] means first two components together explain 80% of variance
+            # - singular_values_:
+            # Square roots of eigenvalues from the SVD (Singular Value Decomposition)
+            # Represent the "strength" or "scale" of each principal component
+            # Larger values indicate more important components
+            # Not normalized (unlike variance ratios)
+            # Related to explained variance: (singular_value²) / (n_samples - 1) = explained_variance
+            # - Key differences:
+            # explained_variance_ratio_ is normalized (0-1) and shows relative importance
+            # cumulative_variance_ratio shows accumulated explanation power
+            # singular_values_ shows absolute scale/magnitude of components in the original data space
+        component_contribution = {
+            'explained_variance_ratio': model_manager.pca.explained_variance_ratio_,
+            'cumulative_variance_ratio': np.cumsum(model_manager.pca.explained_variance_ratio_),
+            'singular_values': model_manager.pca.singular_values_
+        }
+
         model_manager.save_model()
     else:
         model_manager.load_model()
+        # Get component contributions from loaded model
+        component_contribution = {
+            'explained_variance_ratio': model_manager.pca.explained_variance_ratio_,
+            'cumulative_variance_ratio': np.cumsum(model_manager.pca.explained_variance_ratio_),
+            'singular_values': model_manager.pca.singular_values_
+        }
 
     # Transform features using the fitted model
     features_to_transform = features[:, feature_indices] if dynamic_components and feature_indices is not None else features
@@ -350,7 +388,7 @@ def get_pca_projection(features, n_components=2, should_fit=True, evorun_dir='',
         ])
         del reconstruction_losses
 
-    return (scaled, surprise_scores, feature_contribution, feature_indices, selected_pca_components)
+    return (scaled, surprise_scores, feature_contribution, feature_indices, selected_pca_components, component_contribution)
 
 def get_autoencoder_projection(features, n_components=2, should_fit=True, evorun_dir='', calculate_surprise=False, random_state=42):
     model_manager = get_model_manager(evorun_dir)
@@ -430,14 +468,25 @@ def get_umap_projection(features, n_components=2, should_fit=True, evorun_dir=''
     features = np.array(features)
     n_samples = features.shape[0]
 
-    # Determine appropriate n_neighbors and batch size
-    original_n_neighbors = n_neighbors
-    if n_samples <= n_neighbors:
-        n_neighbors = max(2, n_samples - 1)
-        warnings.warn(f"n_neighbors ({original_n_neighbors}) is greater than or equal to n_samples ({n_samples}). "
-                      f"Reducing n_neighbors to {n_neighbors} for this projection.")
-    
+    # Special handling for very small datasets
+    if n_samples < 4:  # UMAP needs at least 4 samples to work reliably
+        print(f"Warning: Dataset too small for UMAP (n_samples={n_samples}). Falling back to PCA.")
+        # Always use should_fit=True for PCA fallback when in fitting mode
+        use_fit = True if should_fit else False
+        pca_result = get_pca_projection(
+            features, 
+            n_components=n_components, 
+            should_fit=use_fit, 
+            evorun_dir=evorun_dir, 
+            calculate_surprise=calculate_surprise
+        )
+        # Extract just the projection and surprise scores from PCA result
+        if calculate_surprise:
+            return pca_result[0], pca_result[1]
+        return pca_result[0], None
+
     if should_fit:
+        # Only proceed with UMAP fitting if we have enough samples
         input_dim = features.shape[1]
 
         if calculate_surprise:
