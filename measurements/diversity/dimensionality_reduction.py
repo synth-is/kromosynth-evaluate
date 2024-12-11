@@ -148,6 +148,89 @@ def create_pca_autoencoder(input_dim, latent_dim, random_state):
     
     return autoencoder, encoder
 
+def create_vae(input_dim, latent_dim, random_state):
+    tf.random.set_seed(random_state)
+    
+    # Encoder
+    encoder_inputs = tf.keras.Input(shape=(input_dim,))
+    x = tf.keras.layers.Dense(64, activation='relu')(encoder_inputs)
+    x = tf.keras.layers.Dense(32, activation='relu')(x)
+    
+    # VAE specific: create mean and log variance layers
+    z_mean = tf.keras.layers.Dense(latent_dim, name='z_mean')(x)
+    z_log_var = tf.keras.layers.Dense(latent_dim, name='z_log_var')(x)
+    
+    # Sampling layer
+    class Sampling(tf.keras.layers.Layer):
+        def call(self, inputs):
+            z_mean, z_log_var = inputs
+            batch = tf.shape(z_mean)[0]
+            dim = tf.shape(z_mean)[1]
+            epsilon = tf.random.normal(shape=(batch, dim))
+            return z_mean + tf.exp(0.5 * z_log_var) * epsilon
+    
+    z = Sampling()([z_mean, z_log_var])
+    
+    # Build encoder model
+    encoder = tf.keras.Model(encoder_inputs, [z_mean, z_log_var, z], name='encoder')
+    
+    # Decoder
+    decoder_inputs = tf.keras.Input(shape=(latent_dim,))
+    x = tf.keras.layers.Dense(32, activation='relu')(decoder_inputs)
+    x = tf.keras.layers.Dense(64, activation='relu')(x)
+    decoder_outputs = tf.keras.layers.Dense(input_dim, activation='linear')(x)
+    decoder = tf.keras.Model(decoder_inputs, decoder_outputs, name='decoder')
+    
+    # VAE model
+    class VAE(tf.keras.Model):
+        def __init__(self, encoder, decoder, **kwargs):
+            super().__init__(**kwargs)
+            self.encoder = encoder
+            self.decoder = decoder
+            self.total_loss_tracker = tf.keras.metrics.Mean(name='total_loss')
+            self.reconstruction_loss_tracker = tf.keras.metrics.Mean(name='reconstruction_loss')
+            self.kl_loss_tracker = tf.keras.metrics.Mean(name='kl_loss')
+            
+        @property
+        def metrics(self):
+            return [
+                self.total_loss_tracker,
+                self.reconstruction_loss_tracker,
+                self.kl_loss_tracker,
+            ]
+        
+        def train_step(self, data):
+            with tf.GradientTape() as tape:
+                z_mean, z_log_var, z = self.encoder(data)
+                reconstruction = self.decoder(z)
+                reconstruction_loss = tf.reduce_mean(
+                    tf.reduce_sum(
+                        tf.keras.losses.mse(data, reconstruction), axis=1
+                    )
+                )
+                kl_loss = -0.5 * tf.reduce_mean(
+                    1 + z_log_var - tf.square(z_mean) - tf.exp(z_log_var)
+                )
+                total_loss = reconstruction_loss + kl_loss
+                
+            grads = tape.gradient(total_loss, self.trainable_weights)
+            self.optimizer.apply_gradients(zip(grads, self.trainable_weights))
+            
+            self.total_loss_tracker.update_state(total_loss)
+            self.reconstruction_loss_tracker.update_state(reconstruction_loss)
+            self.kl_loss_tracker.update_state(kl_loss)
+            
+            return {
+                "loss": self.total_loss_tracker.result(),
+                "reconstruction_loss": self.reconstruction_loss_tracker.result(),
+                "kl_loss": self.kl_loss_tracker.result(),
+            }
+    
+    vae = VAE(encoder, decoder)
+    vae.compile(optimizer='adam')
+    
+    return vae, encoder
+
 def calculate_reconstruction_loss(model, features):
     if isinstance(model, ParametricUMAP):
         if hasattr(model, 'encoder') and hasattr(model, 'decoder') and model.encoder is not None and model.decoder is not None:
@@ -460,6 +543,56 @@ def get_autoencoder_projection(features, n_components=2, should_fit=True, evorun
         return scaled, surprise_scores
     else:
         return scaled, None
+
+def get_vae_projection(features, n_components=2, should_fit=True, evorun_dir='', calculate_surprise=False, random_state=42):
+    model_manager = get_model_manager(evorun_dir)
+    
+    features = np.array(features, dtype=np.float32)
+    if features.ndim == 1:
+        features = features.reshape(1, -1)
+    
+    if should_fit:
+        print('Fitting VAE...')
+        vae, encoder = create_vae(features.shape[1], n_components, random_state)
+        model_manager.pca_autoencoder = vae  # Reuse existing attribute
+        model_manager.pca_encoder = encoder  # Reuse existing attribute
+        
+        model_manager.pca_autoencoder.fit(features, epochs=50, batch_size=64, verbose=1)
+        
+        # Update scaler for consistent output range
+        _, _, encoded_features = model_manager.pca_encoder(features)
+        model_manager.scaler = MinMaxScaler(feature_range=(0, 1))
+        model_manager.scaler.fit(encoded_features)
+        
+        if calculate_surprise:
+            all_reconstruction_losses = calculate_reconstruction_loss(model_manager.pca_autoencoder, features)
+            model_manager.max_reconstruction_error = np.max(all_reconstruction_losses)
+            model_manager.max_complexity = np.max([calculate_complexity(f) for f in features])
+            model_manager.max_smoothness = np.max([calculate_smoothness(f) for f in features])
+        
+        model_manager.save_model()
+    else:
+        model_manager.load_model()
+    
+    # Get projection
+    _, _, encoded_features = model_manager.pca_encoder(features)
+    scaled = model_manager.scaler.transform(encoded_features)
+    
+    if calculate_surprise and model_manager.max_reconstruction_error is not None:
+        reconstruction_losses = calculate_reconstruction_loss(model_manager.pca_autoencoder, features)
+        surprise_scores = np.array([
+            calculate_surprise_score(
+                loss, 
+                model_manager.max_reconstruction_error,
+                feature, 
+                model_manager.max_complexity,
+                model_manager.max_smoothness
+            )
+            for loss, feature in zip(reconstruction_losses, features)
+        ])
+        return scaled, surprise_scores
+    
+    return scaled, None
 
 def get_umap_projection(features, n_components=2, should_fit=True, evorun_dir='', calculate_surprise=False, 
                         random_state=42, n_neighbors=15, min_dist=0.1, metric='euclidean'):

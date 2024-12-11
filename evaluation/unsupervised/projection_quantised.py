@@ -13,7 +13,7 @@ import numpy as np
 
 import sys
 sys.path.append('../..')
-from measurements.diversity.dimensionality_reduction import get_pca_projection, get_autoencoder_projection, get_umap_projection, clear_tf_session, projection_with_cleanup
+from measurements.diversity.dimensionality_reduction import get_pca_projection, get_autoencoder_projection, get_vae_projection, get_umap_projection, clear_tf_session, projection_with_cleanup
 from measurements.diversity.util.discretise import vector_to_index
 # from measurements.diversity.util.metrics_visualiser import MetricsVisualizer
 from measurements.diversity.util.diversity_metrics import calculate_diversity_metrics, perform_cluster_analysis, calculate_performance_spread, calculate_novelty_metric
@@ -89,6 +89,17 @@ async def socket_server(websocket, path):
         elif request_path == '/autoencoder':
             projection, surprise_scores = projection_with_cleanup(
                 get_autoencoder_projection,
+                feature_vectors, dimensions, should_fit, evorun_dir, calculate_surprise
+            )
+            # Set these to None for non-PCA endpoints
+            feature_contribution = None
+            feature_indices = None
+            selected_pca_components = None
+            component_contribution = None
+            
+        elif request_path == '/vae':
+            projection, surprise_scores = projection_with_cleanup(
+                get_vae_projection,
                 feature_vectors, dimensions, should_fit, evorun_dir, calculate_surprise
             )
             # Set these to None for non-PCA endpoints
