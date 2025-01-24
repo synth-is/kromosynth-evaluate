@@ -245,7 +245,7 @@ async def socket_server(websocket, path):
 
             print('Features extracted shape:', np.array(features).shape)
 
-            print('features:', features)
+            # print('features:', features)
 
             # print('MFCC features extracted:', features)
 
@@ -258,7 +258,9 @@ async def socket_server(websocket, path):
 
             # ensure all values in features are of type float
             features = [float(f) for f in features]
-            
+
+            features = np.nan_to_num(features).tolist()
+
             response = {'status': 'received standalone audio', 'features': features, 'embedding': embeddings.tolist(), 'type': features_type, 'time': end - start}
             await websocket.send(json.dumps(response))
             await asyncio.sleep(30)

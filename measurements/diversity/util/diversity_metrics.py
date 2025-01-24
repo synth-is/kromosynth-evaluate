@@ -11,17 +11,27 @@ def calculate_diversity_metrics(feature_vectors):
     behavioral_distances = pdist(feature_vectors, metric='cosine')
     behavioral_distances = behavioral_distances[~np.isnan(behavioral_distances)]
     # Normalize distances
-    min_dist = np.min(behavioral_distances)
-    max_dist = np.max(behavioral_distances)
-    if max_dist - min_dist != 0:
-        behavioral_distances = (behavioral_distances - min_dist) / (max_dist - min_dist)
+    if behavioral_distances.size > 0:
+        min_dist = np.min(behavioral_distances)
+        max_dist = np.max(behavioral_distances)
+        if max_dist - min_dist != 0:
+            behavioral_distances = (behavioral_distances - min_dist) / (max_dist - min_dist)
+        else:
+            behavioral_distances = np.zeros_like(behavioral_distances)
     else:
         behavioral_distances = np.zeros_like(behavioral_distances)
-    behavioral_diversity = {
-        'mean': np.mean(behavioral_distances),
-        'median': np.median(behavioral_distances),
-        'std': np.std(behavioral_distances)
-    }
+    if behavioral_distances.size > 0:
+        behavioral_diversity = {
+            'mean': np.mean(behavioral_distances),
+            'median': np.median(behavioral_distances),
+            'std': np.std(behavioral_distances)
+        }
+    else:
+        behavioral_diversity = {
+            'mean': 0.0,
+            'median': 0.0,
+            'std': 0.0
+        }
 
 
     # Novelty Metric
@@ -77,18 +87,37 @@ def perform_cluster_analysis(feature_vectors):
         'cluster_sizes': [int(size) for size in cluster_sizes]
     }
 
-def calculate_performance_spread(feature_vectors, fitness_values):
-    grid = np.zeros((100, 100))  # Adjust grid size as needed
-    # Normalize feature vectors to the range [0, 99]
+def calculate_performance_spread(feature_vectors, fitness_values, classification_dimensions):
+    if classification_dimensions is not None:
+        grid_shape = classification_dimensions
+    else:
+        grid_shape = (100, 100)
+    grid = np.zeros(grid_shape)
+    
+    # Normalize feature vectors to the range [0, grid_shape - 1]
     for fv, fitness in zip(feature_vectors, fitness_values):
-        x, y = np.clip(fv, 0, 99).astype(int)  # Ensure indices are within the valid range
-        grid[x, y] = max(grid[x, y], fitness)
+        if fitness is None:
+            fitness = 0.0
+            
+        # Ensure indices are integers and within bounds
+        indices = []
+        for i, dim in enumerate(fv[:len(grid_shape)]):
+            idx = int(np.clip(dim, 0, grid_shape[i] - 1))
+            indices.append(idx)
+            
+        # Handle different dimensionalities
+        if len(grid_shape) == 2:
+            current_value = grid[indices[0], indices[1]]
+            grid[indices[0], indices[1]] = max(float(current_value), float(fitness))
+        elif len(grid_shape) == 3:
+            current_value = grid[indices[0], indices[1], indices[2]]
+            grid[indices[0], indices[1], indices[2]] = max(float(current_value), float(fitness))
 
     return {
-        'mean': np.mean(grid),
-        'std': np.std(grid),
-        'min': np.min(grid),
-        'max': np.max(grid)
+        'mean': float(np.mean(grid)),
+        'std': float(np.std(grid)),
+        'min': float(np.min(grid)),
+        'max': float(np.max(grid))
     }
 
 # def calculate_novelty_metric(feature_vectors, k=15):
