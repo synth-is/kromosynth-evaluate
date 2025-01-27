@@ -609,7 +609,7 @@ def get_umap_projection(features, n_components=2, should_fit=True, evorun_dir=''
         pca_result = get_pca_projection(
             features, 
             n_components=n_components, 
-            should_fit=use_fit, 
+            should_fit=True, # use_fit, 
             evorun_dir=evorun_dir, 
             calculate_surprise=calculate_surprise
         )
