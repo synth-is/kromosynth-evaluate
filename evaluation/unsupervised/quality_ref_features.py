@@ -178,6 +178,145 @@ def get_similarity(query_embedding, reference_embedding):
     
     return similarity * scaling_factor
 
+def get_mfcc_focus_indices(feature_type, focus_type):
+    """
+    Get the appropriate feature indices for different MFCC focus types and feature extraction methods.
+    
+    Parameters:
+    -----------
+    feature_type : str
+        The type of MFCC feature extraction used ('mfcc', 'mfcc-sans0', 'mfcc-statistics', 'mfcc-sans0-statistics')
+    focus_type : str
+        Type of focus: 'timbre', 'spectral', 'energy', 'temporal', 'full'
+    
+    Returns:
+    --------
+    indices : list
+        List of indices to select from the feature vector
+    """
+    # Determine if we're using statistics-based features
+    is_statistics = 'statistics' in feature_type
+    # Determine if we're using sans0 features
+    is_sans0 = 'sans0' in feature_type
+    
+    # For statistical features, the format is:
+    # [means(13), std_devs(13), mins(13), maxes(13), der_means(13), der_std_devs(13), der_mins(13), der_maxes(13)]
+    # For sans0, we have 12 instead of 13 coefficients
+    
+    # Regular MFCC features (non-statistics)
+    if not is_statistics:
+        # For regular features with means, std_devs, first-order differences
+        # Format: [means(13), std_devs(13), first_order_diffs(13)]
+        # For sans0, we have 12 instead of 13 coefficients
+        n_coeffs = 12 if is_sans0 else 13
+        offset = 0 if not is_sans0 else 0  # No offset needed since first coeff is already removed
+        
+        if focus_type == 'timbre':
+            # Coefficients 1-5 (indices 1-5 or 0-4 for sans0)
+            start_idx = 1 if not is_sans0 else 0
+            indices = list(range(start_idx, start_idx + 5))
+            # Add corresponding std_devs and first_order_diffs
+            indices += [i + n_coeffs for i in indices]
+            indices += [i + 2*n_coeffs for i in indices[:n_coeffs]]
+            return indices
+            
+        elif focus_type == 'spectral':
+            # Coefficients 6-12 (indices 6-12 or 5-11 for sans0)
+            start_idx = 6 if not is_sans0 else 5
+            end_idx = 13 if not is_sans0 else 12
+            indices = list(range(start_idx, end_idx))
+            # Add corresponding std_devs and first_order_diffs
+            indices += [i + n_coeffs for i in indices]
+            indices += [i + 2*n_coeffs for i in indices[:n_coeffs]]
+            return indices
+            
+        elif focus_type == 'energy':
+            if is_sans0:
+                raise ValueError("Energy focus is not compatible with sans0 features as they exclude coefficient 0")
+            # Coefficient 0 (energy)
+            indices = [0]
+            # Add corresponding std_dev and first_order_diff
+            indices += [0 + n_coeffs]
+            indices += [0 + 2*n_coeffs]
+            return indices
+            
+        elif focus_type == 'temporal':
+            # For temporal focus, we'll use all coefficients but focus on derivatives
+            # In regular features, these are the first_order_diffs
+            return list(range(2*n_coeffs, 3*n_coeffs))
+            
+        elif focus_type == 'full':
+            # Use all coefficients
+            return list(range(3*n_coeffs))
+            
+    else:
+        # For statistical features (mfcc-statistics or mfcc-sans0-statistics)
+        # Format: [means(13), std_devs(13), mins(13), maxes(13), der_means(13), der_std_devs(13), der_mins(13), der_maxes(13)]
+        n_coeffs = 12 if is_sans0 else 13
+        
+        if focus_type == 'timbre':
+            # Coefficients 1-5 (indices 1-5 or 0-4 for sans0)
+            start_idx = 1 if not is_sans0 else 0
+            timbre_indices = list(range(start_idx, start_idx + 5))
+            # Gather all related statistics for these coefficients
+            indices = []
+            for i in timbre_indices:
+                # Add mean, std_dev, min, max
+                indices.append(i)  # mean
+                indices.append(i + n_coeffs)  # std_dev
+                indices.append(i + 2*n_coeffs)  # min
+                indices.append(i + 3*n_coeffs)  # max
+                # Add der_mean, der_std_dev, der_min, der_max
+                indices.append(i + 4*n_coeffs)  # der_mean
+                indices.append(i + 5*n_coeffs)  # der_std_dev
+                indices.append(i + 6*n_coeffs)  # der_min
+                indices.append(i + 7*n_coeffs)  # der_max
+            return indices
+            
+        elif focus_type == 'spectral':
+            # Coefficients 6-12 (indices 6-12 or 5-11 for sans0)
+            start_idx = 6 if not is_sans0 else 5
+            end_idx = 13 if not is_sans0 else 12
+            spectral_indices = list(range(start_idx, end_idx))
+            # Gather all related statistics for these coefficients
+            indices = []
+            for i in spectral_indices:
+                # Add mean, std_dev, min, max
+                indices.append(i)  # mean
+                indices.append(i + n_coeffs)  # std_dev
+                indices.append(i + 2*n_coeffs)  # min
+                indices.append(i + 3*n_coeffs)  # max
+                # Add der_mean, der_std_dev, der_min, der_max
+                indices.append(i + 4*n_coeffs)  # der_mean
+                indices.append(i + 5*n_coeffs)  # der_std_dev
+                indices.append(i + 6*n_coeffs)  # der_min
+                indices.append(i + 7*n_coeffs)  # der_max
+            return indices
+            
+        elif focus_type == 'energy':
+            if is_sans0:
+                raise ValueError("Energy focus is not compatible with sans0 features as they exclude coefficient 0")
+            # Coefficient 0 (energy)
+            i = 0
+            indices = [
+                i, i + n_coeffs, i + 2*n_coeffs, i + 3*n_coeffs,  # mean, std_dev, min, max
+                i + 4*n_coeffs, i + 5*n_coeffs, i + 6*n_coeffs, i + 7*n_coeffs  # der_mean, der_std_dev, der_min, der_max
+            ]
+            return indices
+            
+        elif focus_type == 'temporal':
+            # For temporal focus, we'll focus on derivatives
+            # Get all derivative statistics
+            indices = list(range(4*n_coeffs, 8*n_coeffs))
+            return indices
+            
+        elif focus_type == 'full':
+            # Use all coefficients and statistics
+            return list(range(8*n_coeffs))
+
+    # Default case - return all indices
+    return list(range(100))  # Large enough for all feature types
+
 async def socket_server(websocket, path):
     global reference_embeddings, normalization_stats
     url_components = urlparse(path)
@@ -195,9 +334,12 @@ async def socket_server(websocket, path):
         z_score_normalisation_reference_features_paths = query_params.get('zScoreNormalisationReferenceFeaturesPaths', [None])[0]
         z_score_normalisation_train_features_file_path = query_params.get('zScoreNormalisationTrainFeaturesPath', [None])[0]
 
-        dynamic_components = query_params.get('dynamicComponents', [False])[0]
+        dynamic_components = str_to_bool(query_params.get('dynamicComponents', ['False'])[0])
         feature_indices = query_params.get('featureIndices', [None])[0]
-
+        
+        # Get MFCC focus parameter
+        mfcc_focus = query_params.get('mfcc_focus', [None])[0]
+        
         if transformation_power is not None:
             transformation_power = float(transformation_power)
         
@@ -210,27 +352,41 @@ async def socket_server(websocket, path):
         query_embedding = np.array(json.loads(message))
         print(f"embeddings shape: {query_embedding.shape}")
         
+        # Handle reference embedding extraction
         if ',' in reference_embedding_key:
             reference_embedding_keys = reference_embedding_key.split(',')
             reference_embedding = np.concatenate([reference_embeddings[reference_embedding_path][key] for key in reference_embedding_keys], axis=0)
         else:
             reference_embedding = np.array(reference_embeddings[reference_embedding_path][reference_embedding_key])
         
+        # If MFCC focus is specified, override feature_indices
+        if mfcc_focus:
+            print(f"Applying MFCC focus: {mfcc_focus}")
+            feature_indices = get_mfcc_focus_indices(reference_embedding_key, mfcc_focus)
+            feature_indices = ','.join(map(str, feature_indices))
+            dynamic_components = True
+            print(f"Generated feature indices for {mfcc_focus} focus: {feature_indices}")
+        
         # Apply Z-score normalization if paths are provided
         if z_score_normalisation_reference_features_paths or z_score_normalisation_train_features_file_path:
+            # Create a unique normalization key
+            focus_suffix = f"-{mfcc_focus}" if mfcc_focus else ""
             norm_key = get_normalization_key(
                 z_score_normalisation_reference_features_paths,
                 z_score_normalisation_train_features_file_path
-            )
+            ) + f"-{reference_embedding_key}" + focus_suffix
             
             if norm_key not in normalization_stats:
                 print(f"Computing global statistics for {norm_key}")
                 ref_paths = z_score_normalisation_reference_features_paths.split(',') if z_score_normalisation_reference_features_paths else []
+                
+                # Use standard statistics computation
                 mean, std = compute_global_statistics(
                     ref_paths,
                     z_score_normalisation_train_features_file_path,
                     reference_embedding_key
                 )
+                
                 normalization_stats[norm_key] = (mean, std)
             
             # Apply normalization
@@ -238,10 +394,23 @@ async def socket_server(websocket, path):
             query_embedding = z_score_normalize(query_embedding, mean, std)
             reference_embedding = z_score_normalize(reference_embedding, mean, std)
         
+        # Apply dynamic component selection if specified
         if dynamic_components and feature_indices is not None:
-            feature_indices = [int(i) for i in feature_indices.split(',')]
+            if isinstance(feature_indices, str):
+                feature_indices = [int(i) for i in feature_indices.split(',')]
+            
+            # Make sure indices are within bounds
+            valid_indices = [i for i in feature_indices if i < len(query_embedding) and i < len(reference_embedding)]
+            if len(valid_indices) != len(feature_indices):
+                print(f"Warning: Some feature indices were out of bounds. Using {len(valid_indices)} valid indices.")
+                feature_indices = valid_indices
+                
+            if len(feature_indices) == 0:
+                raise ValueError("No valid feature indices after filtering")
+                
             query_embedding = query_embedding[feature_indices]
             reference_embedding = reference_embedding[feature_indices]
+            print(f"After applying feature indices, embeddings shape: {query_embedding.shape}")
 
         # Compute similarity using existing methods
         if request_path == '/cosine':
@@ -266,6 +435,8 @@ async def socket_server(websocket, path):
         
     except Exception as e:
         print('quality: Exception', e)
+        import traceback
+        traceback.print_exc()
         response = {'status': 'ERROR', 'error': str(e)}
         await websocket.send(json.dumps(response))
 

@@ -182,30 +182,44 @@ async def socket_server(websocket, path):
 
         # Process projection if it exists
         if 'projection' in locals():
-            # print('projection', projection)
             print('projection shape:', projection.shape)
             print('projection type:', type(projection))
             
             try:
+                # Handle NaN values in projection
+                if np.any(np.isnan(projection)):
+                    print("Warning: NaN values found in projection, replacing with zeros")
+                    projection = np.nan_to_num(projection, nan=0.0)
+                
                 if projection.size == 0:
                     print("Warning: Empty projection array received")
                     projection_min = 0
                     projection_max = 1
                 else:
-                    projection_min = projection.min()
-                    projection_max = projection.max()
+                    projection_min = np.nanmin(projection)
+                    projection_max = np.nanmax(projection)
                     
+                # Ensure we have valid min/max ranges
+                if np.isnan(projection_min) or np.isnan(projection_max):
+                    print("Warning: Invalid range detected, using defaults")
+                    projection_min = 0
+                    projection_max = 1
+                elif projection_min == projection_max:
+                    print("Warning: Zero range detected, adjusting max")
+                    projection_max = projection_min + 1
+                
                 if request_path not in cell_range_min_for_projection or cell_range_min_for_projection[request_path] > projection_min:
                     cell_range_min_for_projection[request_path] = projection_min
                 if request_path not in cell_range_max_for_projection or cell_range_max_for_projection[request_path] < projection_max:
                     cell_range_max_for_projection[request_path] = projection_max
-            
+
             except Exception as e:
                 print(f"Error processing projection range: {str(e)}")
                 print(f"Projection details:")
                 print(f"- Shape: {projection.shape if hasattr(projection, 'shape') else 'no shape'}")
                 print(f"- Size: {projection.size if hasattr(projection, 'size') else 'no size'}")
                 print(f"- Type: {type(projection)}")
+                print(f"- Contains NaN: {np.any(np.isnan(projection))}")
                 projection_min = 0
                 projection_max = 1
                 if request_path not in cell_range_min_for_projection:
