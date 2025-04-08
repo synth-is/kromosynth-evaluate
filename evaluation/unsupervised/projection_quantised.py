@@ -13,7 +13,7 @@ import numpy as np
 
 import sys
 sys.path.append('../..')
-from measurements.diversity.dimensionality_reduction import get_pca_projection, get_autoencoder_projection, get_vae_projection, get_umap_projection, clear_tf_session, projection_with_cleanup
+from measurements.diversity.dimensionality_reduction import get_pca_projection, get_autoencoder_projection, get_vae_projection, get_umap_projection, clear_tf_session, projection_with_cleanup, get_contrastive_projection
 from measurements.diversity.util.discretise import vector_to_index
 # from measurements.diversity.util.metrics_visualiser import MetricsVisualizer
 from measurements.diversity.util.diversity_metrics import calculate_diversity_metrics, perform_cluster_analysis, calculate_performance_spread, calculate_novelty_metric
@@ -128,6 +128,90 @@ async def socket_server(websocket, path):
             feature_indices = None
             selected_pca_components = None
             component_contribution = None
+
+
+
+        # AURORA-XCon
+        elif request_path == '/contrastive':
+            feature_vectors = jsonData.get('feature_vectors', [])
+            fitness_values = jsonData.get('fitness_values', [])
+            should_fit = jsonData.get('should_fit', False)
+            margin_multiplier = jsonData.get('margin_multiplier', 1.0)
+            calculate_surprise = jsonData.get('calculate_surprise', False)
+            
+            print('should_fit: ', should_fit)
+            print('Using contrastive learning with triplet loss')
+            print(f'Feature vectors: {len(feature_vectors)}, Fitness values: {len(fitness_values)}')
+            
+            if len(feature_vectors) != len(fitness_values):
+                response = {'status': 'ERROR', 'message': 'Feature vectors and fitness values must have the same length'}
+                await websocket.send(json.dumps(response))
+                return
+            
+            try:
+                projection, surprise_scores = projection_with_cleanup(
+                    get_contrastive_projection,
+                    feature_vectors, fitness_values, dimensions, should_fit, evorun_dir, 
+                    calculate_surprise, margin_multiplier
+                )
+                
+                # Process projection (similar to other endpoints)
+                if np.any(np.isnan(projection)):
+                    print("Warning: NaN values found in projection, replacing with zeros")
+                    projection = np.nan_to_num(projection, nan=0.0)
+                
+                if projection.size == 0:
+                    print("Warning: Empty projection array received")
+                    projection_min = 0
+                    projection_max = 1
+                else:
+                    projection_min = np.nanmin(projection)
+                    projection_max = np.nanmax(projection)
+                
+                # Update cell range and discretize projection (as in other endpoints)
+                if should_fit:
+                    if request_path not in cell_range_min_for_projection or cell_range_min_for_projection[request_path] > projection_min:
+                        cell_range_min_for_projection[request_path] = projection_min
+                    if request_path not in cell_range_max_for_projection or cell_range_max_for_projection[request_path] < projection_max:
+                        cell_range_max_for_projection[request_path] = projection_max
+                
+                cell_range_min = cell_range_min_for_projection[request_path]
+                cell_range_max = cell_range_max_for_projection[request_path]
+                
+                cells = args.dimension_cells
+                discretised_projection = [
+                    vector_to_index(element, cell_range_min, cell_range_max, cells, dimensions)
+                    for element in projection
+                ]
+                
+                if calculate_novelty:
+                    novelty_scores = calculate_novelty_metric(discretised_projection, k=15)
+                else:
+                    novelty_scores = None
+                
+                response = {
+                    'status': 'OK',
+                    'feature_map': discretised_projection,
+                    'surprise_scores': surprise_scores.tolist() if surprise_scores is not None else None,
+                    'novelty_scores': novelty_scores.tolist() if novelty_scores is not None else None
+                }
+                
+            except Exception as e:
+                print('Error in contrastive projection:', e)
+                print('Traceback:')
+                import traceback
+                traceback.print_exc()
+                
+                error_info = {
+                    'error_type': type(e).__name__,
+                    'error_message': str(e),
+                    'traceback': traceback.format_exc()
+                }
+                response = {'status': 'ERROR', 'error_details': error_info}
+            
+            await websocket.send(json.dumps(response))
+            return
+
 
 
         elif request_path == '/diversity_metrics':

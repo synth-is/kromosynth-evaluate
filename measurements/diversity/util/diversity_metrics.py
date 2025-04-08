@@ -49,10 +49,14 @@ def calculate_diversity_metrics(feature_vectors):
 
     novelty_scores = calculate_novelty_metric(feature_vectors, k=k, metric='cosine')
 
+    # Handle NaN values in novelty_scores
+    if np.isnan(novelty_scores).all():
+        novelty_scores = np.zeros_like(novelty_scores)
+
     novelty_score_stats = {
-        'mean': np.mean(novelty_scores),
-        'median': np.median(novelty_scores),
-        'std': np.std(novelty_scores)
+        'mean': np.nanmean(novelty_scores),
+        'median': np.nanmedian(novelty_scores),
+        'std': np.nanstd(novelty_scores)
     }
 
 

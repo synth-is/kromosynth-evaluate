@@ -7,7 +7,7 @@ import os
 import pickle as pkl
 from scipy.stats import entropy
 import time
-import warnings
+from tensorflow.keras.saving import register_keras_serializable
 
 class ModelManager:
     def __init__(self, evorun_dir):
@@ -21,6 +21,8 @@ class ModelManager:
         self.max_complexity = None
         self.max_smoothness = None
         self.timestamps = {}
+
+        self.contrastive_encoder = None
 
     def save_model(self):
         os.makedirs(self.evorun_dir, exist_ok=True)
@@ -64,6 +66,11 @@ class ModelManager:
             np.save(os.path.join(self.evorun_dir, 'max_smoothness.npy'), self.max_smoothness)
             self.timestamps['max_smoothness'] = current_time
 
+        if self.contrastive_encoder is not None:
+            contrastive_encoder_path = os.path.join(self.evorun_dir, 'contrastive_encoder.keras')
+            self.contrastive_encoder.save(contrastive_encoder_path)
+            self.timestamps['contrastive_encoder'] = current_time
+
     def load_model(self):
         self._load_if_newer('pca', 'pca_model.pkl', self._load_pca)
         self._load_if_newer('pca_autoencoder', 'pca_autoencoder.keras', self._load_pca_autoencoder)
@@ -73,6 +80,7 @@ class ModelManager:
         self._load_if_newer('max_reconstruction_error', 'max_reconstruction_error.npy', self._load_max_reconstruction_error)
         self._load_if_newer('max_complexity', 'max_complexity.npy', self._load_max_complexity)
         self._load_if_newer('max_smoothness', 'max_smoothness.npy', self._load_max_smoothness)
+        self._load_if_newer('contrastive_encoder', 'contrastive_encoder.keras', self._load_contrastive_encoder)
 
     def _load_if_newer(self, key, filename, load_func):
         file_path = os.path.join(self.evorun_dir, filename)
@@ -105,6 +113,9 @@ class ModelManager:
 
     def _load_max_smoothness(self, path):
         self.max_smoothness = np.load(path)
+
+    def _load_contrastive_encoder(self, path):
+        self.contrastive_encoder = tf.keras.models.load_model(path)
 
 model_managers = {}
 
@@ -698,6 +709,276 @@ def get_umap_projection(features, n_components=2, should_fit=True, evorun_dir=''
         return transformed, surprise_scores
     else:
         return transformed, None
+
+
+# AURORA-XCon
+
+def form_triplets_from_fitness(features, fitness_values, num_triplets=None):
+    """
+    Form triplets for contrastive learning based on fitness values.
+    Each triplet consists of (anchor, positive, negative) where positive has
+    similar fitness to anchor and negative has dissimilar fitness.
+    
+    Args:
+        features: List of feature vectors
+        fitness_values: List of corresponding fitness values
+        num_triplets: Number of triplets to generate (defaults to len(features))
+        
+    Returns:
+        anchors, positives, negatives: Arrays of feature vectors for training
+    """
+    if len(features) != len(fitness_values):
+        raise ValueError("Features and fitness values must have the same length")
+    
+    if len(features) < 3:
+        raise ValueError("Need at least 3 samples to form triplets")
+    
+    # Convert to numpy arrays if they aren't already
+    features = np.array(features)
+    fitness_values = np.array(fitness_values)
+    
+    # Default to using all features as anchors
+    if num_triplets is None or num_triplets > len(features):
+        num_triplets = len(features)
+    
+    # Initialize triplet arrays
+    anchors = []
+    positives = []
+    negatives = []
+    
+    # Compute fitness difference matrix
+    fitness_diff = np.abs(fitness_values.reshape(-1, 1) - fitness_values.reshape(1, -1))
+    
+    # Generate triplets
+    anchor_indices = np.random.choice(len(features), num_triplets, replace=(num_triplets > len(features)))
+    
+    for anchor_idx in anchor_indices:
+        # Skip if we have less than 2 other points
+        if len(features) <= 2:
+            continue
+            
+        # Get fitness differences for this anchor
+        diffs = fitness_diff[anchor_idx]
+        
+        # Set anchor's own difference to infinity to avoid selecting itself
+        diffs[anchor_idx] = np.inf
+        
+        # Find index of most similar fitness (positive)
+        positive_idx = np.argmin(diffs)
+        
+        # Set positive's difference to infinity to avoid selecting it as negative
+        diffs[positive_idx] = np.inf
+        
+        # Find index of most dissimilar fitness (negative)
+        negative_idx = np.argmax(diffs)
+        
+        # Add to triplets
+        anchors.append(features[anchor_idx])
+        positives.append(features[positive_idx])
+        negatives.append(features[negative_idx])
+    
+    return np.array(anchors), np.array(positives), np.array(negatives)
+
+def triplet_loss_fn(margin=1.0):
+    """
+    Returns a function that calculates the triplet loss.
+    
+    Args:
+        margin: Margin for triplet loss
+        
+    Returns:
+        loss_fn: Function that computes triplet loss
+    """
+    def loss_fn(y_true, y_pred):
+        # In this implementation, y_pred is the concatenated output of the encoder for
+        # anchors, positives, and negatives
+        batch_size = tf.shape(y_pred)[0] // 3
+        dim = tf.shape(y_pred)[1]
+        
+        # Split the batch into anchor, positive, and negative
+        anchor = y_pred[0:batch_size]
+        positive = y_pred[batch_size:2*batch_size]
+        negative = y_pred[2*batch_size:3*batch_size]
+        
+        # Calculate distances
+        pos_dist = tf.reduce_sum(tf.square(anchor - positive), axis=1)
+        neg_dist = tf.reduce_sum(tf.square(anchor - negative), axis=1)
+        
+        # Compute loss
+        basic_loss = pos_dist - neg_dist + margin
+        loss = tf.maximum(basic_loss, 0.0)
+        
+        return tf.reduce_mean(loss)
+    
+    return loss_fn
+
+def create_contrastive_encoder(input_dim, latent_dim, random_state):
+    """
+    Create an encoder model for contrastive learning.
+    
+    Args:
+        input_dim: Dimension of input features
+        latent_dim: Dimension of latent space
+        random_state: Random seed
+        
+    Returns:
+        encoder: TensorFlow model for encoding features
+    """
+    tf.random.set_seed(random_state)
+    
+    encoder = tf.keras.Sequential([
+        tf.keras.layers.Dense(64, activation='relu', input_shape=(input_dim,)),
+        tf.keras.layers.Dense(32, activation='relu'),
+        tf.keras.layers.Dense(latent_dim, activation='linear')
+    ])
+    
+    return encoder
+
+@register_keras_serializable(package="custom_losses")
+class TripletLoss(tf.keras.losses.Loss):
+    """
+    A serializable triplet loss class for contrastive learning.
+    """
+    def __init__(self, margin=1.0, name="triplet_loss", **kwargs):
+        super().__init__(name=name, **kwargs)
+        self.margin = margin
+
+    def call(self, y_true, y_pred):
+        # In this implementation, y_pred is the concatenated output of the encoder for
+        # anchors, positives, and negatives
+        batch_size = tf.shape(y_pred)[0] // 3
+        
+        # Split the batch into anchor, positive, and negative
+        anchor = y_pred[0:batch_size]
+        positive = y_pred[batch_size:2*batch_size]
+        negative = y_pred[2*batch_size:3*batch_size]
+        
+        # Calculate distances
+        pos_dist = tf.reduce_sum(tf.square(anchor - positive), axis=1)
+        neg_dist = tf.reduce_sum(tf.square(anchor - negative), axis=1)
+        
+        # Compute loss
+        basic_loss = pos_dist - neg_dist + self.margin
+        loss = tf.maximum(basic_loss, 0.0)
+        
+        return tf.reduce_mean(loss)
+    
+    def get_config(self):
+        config = super().get_config()
+        config.update({"margin": self.margin})
+        return config
+
+def get_contrastive_projection(features, fitness_values, n_components=2, should_fit=True, 
+                              evorun_dir='', calculate_surprise=False, margin_multiplier=1.0):
+    """
+    Learn a projection using contrastive learning with triplet loss.
+    
+    Args:
+        features: List of feature vectors
+        fitness_values: List of corresponding fitness values
+        n_components: Dimension of latent space
+        should_fit: Whether to train the model or use existing
+        evorun_dir: Directory for model storage
+        calculate_surprise: Whether to calculate surprise scores
+        margin_multiplier: Multiplier for the adaptive margin
+        
+    Returns:
+        projection: Projected features in latent space
+        surprise_scores: Surprise scores (if requested)
+    """
+    model_manager = get_model_manager(evorun_dir)
+    
+    # Type checking and conversion
+    if isinstance(features, list):
+        features = np.array(features, dtype=np.float32)
+    elif not isinstance(features, np.ndarray):
+        raise ValueError(f"Unrecognized data type for features: {type(features)}")
+    
+    print(f"Features shape: {features.shape}")
+    print(f"Features dtype: {features.dtype}")
+    print(f"Fitness values count: {len(fitness_values)}")
+    
+    if should_fit:
+        print('Fitting contrastive encoder with triplet loss...')
+        
+        # Form triplets from features and fitness values
+        anchors, positives, negatives = form_triplets_from_fitness(features, fitness_values)
+        
+        # Compute minimum distance between features for adaptive margin
+        distances = []
+        for i in range(len(features)):
+            for j in range(i+1, len(features)):
+                dist = np.sum(np.square(features[i] - features[j]))
+                distances.append(dist)
+        
+        if distances:
+            min_distance = np.min(distances)
+            # Use adaptive margin based on minimum distance
+            margin = min_distance * margin_multiplier
+        else:
+            margin = 0.2  # Default margin if no distances can be computed
+        
+        print(f"Using margin: {margin} for triplet loss")
+        
+        # Initialize or retrieve encoder
+        if model_manager.contrastive_encoder is None:
+            model_manager.contrastive_encoder = create_contrastive_encoder(
+                features.shape[1], n_components, random_state=42
+            )
+        
+        # Compile the model with serializable triplet loss
+        model_manager.contrastive_encoder.compile(
+            optimizer='adam',
+            loss=TripletLoss(margin=margin)  # Use the serializable class
+        )
+        
+        # Prepare inputs for training
+        # We'll stack triplets as a single batch for the fit function
+        combined_inputs = np.vstack([anchors, positives, negatives])
+        # Dummy outputs since loss is computed directly on embeddings
+        dummy_outputs = np.zeros((len(combined_inputs), 1))
+        
+        # Train the encoder
+        model_manager.contrastive_encoder.fit(
+            combined_inputs, dummy_outputs,
+            batch_size=32,
+            epochs=50,
+            verbose=1
+        )
+        
+        # Setup scaler for consistent output range
+        encoded_features = model_manager.contrastive_encoder.predict(features)
+        model_manager.scaler = MinMaxScaler(feature_range=(0, 1))
+        model_manager.scaler.fit(encoded_features)
+        
+        model_manager.save_model()
+    else:
+        model_manager.load_model()
+    
+    if model_manager.contrastive_encoder is None:
+        raise ValueError("Contrastive encoder not initialized. Please run with should_fit=True first.")
+    
+    # Project features using trained encoder
+    try:
+        encoded_features = model_manager.contrastive_encoder.predict(features)
+        print(f"Encoded features shape: {encoded_features.shape}")
+    except Exception as e:
+        print(f"Error during encoding: {str(e)}")
+        print("Encoder summary:")
+        model_manager.contrastive_encoder.summary()
+        raise
+    
+    scaled = model_manager.scaler.transform(encoded_features)
+    
+    # Return scaled projections and surprise scores (if calculated)
+    if calculate_surprise and hasattr(model_manager, 'max_reconstruction_error') and model_manager.max_reconstruction_error is not None:
+        # This would be reimplemented for the contrastive approach
+        # For now, return None for surprise scores
+        return scaled, None
+    else:
+        return scaled, None
+
+
 
 def set_global_random_state(seed):
     np.random.seed(seed)
