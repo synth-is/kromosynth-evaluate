@@ -139,20 +139,45 @@ async def socket_server(websocket, path):
             margin_multiplier = jsonData.get('margin_multiplier', 1.0)
             calculate_surprise = jsonData.get('calculate_surprise', False)
             
+            # New parameters for distance-based triplet formation
+            use_distance = jsonData.get('use_distance', False)
+            distance_metric = jsonData.get('distance_metric', 'cosine')
+            random_seed = jsonData.get('random_seed', 42)
+            learning_rate = jsonData.get('learning_rate', 0.001)
+            training_epochs = jsonData.get('training_epochs', 100)
+            # triplet_formation_strategy = jsonData.get('triplet_formation_strategy', 'random')
+            
             print('should_fit: ', should_fit)
             print('Using contrastive learning with triplet loss')
-            print(f'Feature vectors: {len(feature_vectors)}, Fitness values: {len(fitness_values)}')
+            print(f'Feature vectors: {len(feature_vectors)}')
+            if fitness_values:
+                print(f'Fitness values: {len(fitness_values)}')
+            print(f'Using distance metric: {use_distance}')
+            if use_distance:
+                print(f'Distance metric: {distance_metric}')
             
-            if len(feature_vectors) != len(fitness_values):
-                response = {'status': 'ERROR', 'message': 'Feature vectors and fitness values must have the same length'}
+            # Validate inputs depending on triplet mode
+            if not use_distance and (not fitness_values or len(feature_vectors) != len(fitness_values)):
+                response = {'status': 'ERROR', 'message': 'Fitness values must be provided and match feature vectors length when use_distance=False'}
                 await websocket.send(json.dumps(response))
                 return
             
             try:
                 projection, surprise_scores = projection_with_cleanup(
                     get_contrastive_projection,
-                    feature_vectors, fitness_values, dimensions, should_fit, evorun_dir, 
-                    calculate_surprise, margin_multiplier
+                    feature_vectors, 
+                    fitness_values if not use_distance else None,
+                    dimensions, 
+                    should_fit, 
+                    evorun_dir, 
+                    calculate_surprise, 
+                    margin_multiplier,
+                    use_distance,
+                    distance_metric,
+                    random_seed,
+                    learning_rate,
+                    training_epochs,
+                    # triplet_formation_strategy
                 )
                 
                 # Process projection (similar to other endpoints)

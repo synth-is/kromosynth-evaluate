@@ -779,9 +779,143 @@ def form_triplets_from_fitness(features, fitness_values, num_triplets=None):
     
     return np.array(anchors), np.array(positives), np.array(negatives)
 
+def form_triplets_from_fitness_or_distance(
+    features, 
+    fitness_values=None, 
+    num_triplets=None, 
+    use_distance=False, 
+    distance_metric='cosine',
+    random_state=42
+):
+    """
+    Form triplets for contrastive learning based on either fitness values or feature distances.
+    
+    Args:
+        features: List of feature vectors
+        fitness_values: List of corresponding fitness values (optional if use_distance=True)
+        num_triplets: Number of triplets to generate (defaults to len(features))
+        use_distance: Whether to use feature distance instead of fitness for triplet formation
+        distance_metric: Distance metric to use ('cosine' or 'euclidean')
+        random_state: Random seed for reproducibility
+        
+    Returns:
+        anchors, positives, negatives: Arrays of feature vectors for training
+    """
+    if len(features) < 3:
+        raise ValueError("Need at least 3 samples to form triplets")
+    
+    # Convert to numpy arrays if they aren't already
+    features = np.array(features)
+    
+    # Set random seed for reproducibility
+    np.random.seed(random_state)
+    
+    # Default to using all features as anchors
+    if num_triplets is None or num_triplets > len(features):
+        num_triplets = len(features)
+    
+    # Initialize triplet arrays
+    anchors = []
+    positives = []
+    negatives = []
+    
+    if use_distance:
+        # Compute distance matrix between feature vectors
+        distance_matrix = np.zeros((len(features), len(features)))
+        
+        for i in range(len(features)):
+            for j in range(len(features)):
+                if distance_metric == 'cosine':
+                    # Compute cosine distance (1 - cosine similarity)
+                    if np.all(features[i] == 0) or np.all(features[j] == 0):
+                        distance_matrix[i, j] = 1.0  # Maximum distance for zero vectors
+                    else:
+                        cos_sim = np.dot(features[i], features[j]) / (np.linalg.norm(features[i]) * np.linalg.norm(features[j]))
+                        distance_matrix[i, j] = 1.0 - cos_sim
+                else:  # default to euclidean
+                    distance_matrix[i, j] = np.linalg.norm(features[i] - features[j])
+        
+        # Generate triplets based on feature distances with randomization
+        anchor_indices = np.random.choice(len(features), num_triplets, replace=(num_triplets > len(features)))
+        
+        for anchor_idx in anchor_indices:
+            # Get distances for this anchor
+            dists = distance_matrix[anchor_idx].copy()
+            
+            # Set anchor's own distance to infinity to avoid selecting itself
+            dists[anchor_idx] = np.inf
+            
+            # MODIFICATION: Randomly sample two solutions and use as positive/negative based on distance
+            all_indices = np.arange(len(features))
+            all_indices = all_indices[all_indices != anchor_idx]  # Remove anchor
+            
+            # Ensure we have at least two other solutions
+            if len(all_indices) < 2:
+                continue
+                
+            # Randomly sample a pair
+            sample_indices = np.random.choice(all_indices, size=2, replace=False)
+            sample_dists = dists[sample_indices]
+            
+            # For distance, smaller value = more similar
+            if sample_dists[0] < sample_dists[1]:
+                positive_idx, negative_idx = sample_indices
+            else:
+                negative_idx, positive_idx = sample_indices
+            
+            # Add to triplets
+            anchors.append(features[anchor_idx])
+            positives.append(features[positive_idx])
+            negatives.append(features[negative_idx])
+            
+    else:
+        # Modified fitness-based approach with randomization
+        if fitness_values is None:
+            raise ValueError("Fitness values must be provided when use_distance=False")
+            
+        fitness_values = np.array(fitness_values)
+        
+        # Compute fitness difference matrix
+        fitness_diff = np.abs(fitness_values.reshape(-1, 1) - fitness_values.reshape(1, -1))
+        
+        # Generate triplets based on fitness differences
+        anchor_indices = np.random.choice(len(features), num_triplets, replace=(num_triplets > len(features)))
+        
+        for anchor_idx in anchor_indices:
+            # Get fitness differences for this anchor
+            diffs = fitness_diff[anchor_idx].copy()
+            
+            # Set anchor's own difference to infinity to avoid selecting itself
+            diffs[anchor_idx] = np.inf
+            
+            # Randomly sample two solutions and use as positive/negative based on fitness similarity
+            all_indices = np.arange(len(features))
+            all_indices = all_indices[all_indices != anchor_idx]  # Remove anchor
+            
+            # Ensure we have at least two other solutions
+            if len(all_indices) < 2:
+                continue
+                
+            # Randomly sample a pair
+            sample_indices = np.random.choice(all_indices, size=2, replace=False)
+            sample_diffs = diffs[sample_indices]
+            
+            # Smaller diff = more similar fitness
+            if sample_diffs[0] < sample_diffs[1]:
+                positive_idx, negative_idx = sample_indices
+            else:
+                negative_idx, positive_idx = sample_indices
+            
+            # Add to triplets
+            anchors.append(features[anchor_idx])
+            positives.append(features[positive_idx])
+            negatives.append(features[negative_idx])
+    
+    return np.array(anchors), np.array(positives), np.array(negatives)
+
 def triplet_loss_fn(margin=1.0):
     """
-    Returns a function that calculates the triplet loss.
+    Returns a function that calculates the triplet loss using cosine distance.
     
     Args:
         margin: Margin for triplet loss
@@ -793,16 +927,20 @@ def triplet_loss_fn(margin=1.0):
         # In this implementation, y_pred is the concatenated output of the encoder for
         # anchors, positives, and negatives
         batch_size = tf.shape(y_pred)[0] // 3
-        dim = tf.shape(y_pred)[1]
         
         # Split the batch into anchor, positive, and negative
         anchor = y_pred[0:batch_size]
         positive = y_pred[batch_size:2*batch_size]
         negative = y_pred[2*batch_size:3*batch_size]
         
-        # Calculate distances
-        pos_dist = tf.reduce_sum(tf.square(anchor - positive), axis=1)
-        neg_dist = tf.reduce_sum(tf.square(anchor - negative), axis=1)
+        # Normalize embeddings to unit vectors
+        anchor = tf.nn.l2_normalize(anchor, axis=1)
+        positive = tf.nn.l2_normalize(positive, axis=1)
+        negative = tf.nn.l2_normalize(negative, axis=1)
+        
+        # Calculate cosine distances
+        pos_dist = 1 - tf.reduce_sum(anchor * positive, axis=1)
+        neg_dist = 1 - tf.reduce_sum(anchor * negative, axis=1)
         
         # Compute loss
         basic_loss = pos_dist - neg_dist + margin
@@ -868,19 +1006,34 @@ class TripletLoss(tf.keras.losses.Loss):
         config.update({"margin": self.margin})
         return config
 
-def get_contrastive_projection(features, fitness_values, n_components=2, should_fit=True, 
-                              evorun_dir='', calculate_surprise=False, margin_multiplier=1.0):
+def get_contrastive_projection(
+    features, 
+    fitness_values=None, 
+    n_components=2, 
+    should_fit=True, 
+    evorun_dir='', 
+    calculate_surprise=False, 
+    margin_multiplier=1.0,
+    use_distance=False,
+    distance_metric='cosine',
+    random_seed=42,
+    learning_rate=None,  # New parameter
+    training_epochs=None,  # New parameter
+):
     """
     Learn a projection using contrastive learning with triplet loss.
     
     Args:
         features: List of feature vectors
-        fitness_values: List of corresponding fitness values
+        fitness_values: List of corresponding fitness values (optional if use_distance=True)
         n_components: Dimension of latent space
         should_fit: Whether to train the model or use existing
         evorun_dir: Directory for model storage
         calculate_surprise: Whether to calculate surprise scores
         margin_multiplier: Multiplier for the adaptive margin
+        use_distance: Whether to use feature distance instead of fitness for triplet formation
+        distance_metric: Distance metric to use ('cosine' or 'euclidean')
+        random_seed: Random seed for reproducibility
         
     Returns:
         projection: Projected features in latent space
@@ -896,20 +1049,32 @@ def get_contrastive_projection(features, fitness_values, n_components=2, should_
     
     print(f"Features shape: {features.shape}")
     print(f"Features dtype: {features.dtype}")
-    print(f"Fitness values count: {len(fitness_values)}")
+    
+    if fitness_values is not None:
+        print(f"Fitness values count: {len(fitness_values)}")
     
     if should_fit:
         print('Fitting contrastive encoder with triplet loss...')
         
-        # Form triplets from features and fitness values
-        anchors, positives, negatives = form_triplets_from_fitness(features, fitness_values)
+        # Form triplets based on either fitness or feature distance
+        anchors, positives, negatives = form_triplets_from_fitness_or_distance(
+            features, 
+            fitness_values, 
+            use_distance=use_distance,
+            distance_metric=distance_metric,
+            random_state=random_seed
+        )
         
         # Compute minimum distance between features for adaptive margin
         distances = []
         for i in range(len(features)):
             for j in range(i+1, len(features)):
-                dist = np.sum(np.square(features[i] - features[j]))
-                distances.append(dist)
+                if np.all(features[i] == 0) or np.all(features[j] == 0):
+                    dist = 1.0  # Maximum cosine distance for zero vectors
+                else:
+                    cos_sim = np.dot(features[i], features[j]) / (np.linalg.norm(features[i]) * np.linalg.norm(features[j]))
+                    dist = 1.0 - cos_sim  # Cosine distance
+            distances.append(dist)
         
         if distances:
             min_distance = np.min(distances)
@@ -923,28 +1088,72 @@ def get_contrastive_projection(features, fitness_values, n_components=2, should_
         # Initialize or retrieve encoder
         if model_manager.contrastive_encoder is None:
             model_manager.contrastive_encoder = create_contrastive_encoder(
-                features.shape[1], n_components, random_state=42
+                features.shape[1], n_components, random_state=random_seed
             )
         
-        # Compile the model with serializable triplet loss
+        # Compile the model with triplet loss
         model_manager.contrastive_encoder.compile(
-            optimizer='adam',
-            loss=TripletLoss(margin=margin)  # Use the serializable class
+            optimizer=tf.keras.optimizers.Adam(learning_rate=learning_rate if learning_rate else 0.01),
+            loss=TripletLoss(margin=margin)
         )
         
         # Prepare inputs for training
-        # We'll stack triplets as a single batch for the fit function
         combined_inputs = np.vstack([anchors, positives, negatives])
-        # Dummy outputs since loss is computed directly on embeddings
         dummy_outputs = np.zeros((len(combined_inputs), 1))
         
-        # Train the encoder
-        model_manager.contrastive_encoder.fit(
-            combined_inputs, dummy_outputs,
-            batch_size=32,
-            epochs=50,
-            verbose=1
-        )
+        # Add validation split and early stopping
+        # Only split if we have enough triplets
+        if len(anchors) >= 5:  # Need at least a few samples per set
+            # Create validation split (20% of data)
+            val_size = max(1, int(0.2 * len(anchors)))
+            indices = np.arange(len(anchors))
+            np.random.shuffle(indices)
+            
+            train_anchor_indices = indices[:-val_size]
+            val_anchor_indices = indices[-val_size:]
+            
+            # Create train/val combined arrays
+            train_inputs = np.vstack([
+                anchors[train_anchor_indices],
+                positives[train_anchor_indices],
+                negatives[train_anchor_indices]
+            ])
+            train_outputs = np.zeros((len(train_inputs), 1))
+            
+            val_inputs = np.vstack([
+                anchors[val_anchor_indices],
+                positives[val_anchor_indices],
+                negatives[val_anchor_indices]
+            ])
+            val_outputs = np.zeros((len(val_inputs), 1))
+            
+            # Early stopping callback
+            early_stopping = tf.keras.callbacks.EarlyStopping(
+                monitor='val_loss',
+                min_delta=0.0005,  # As in paper: stop when loss doesn't improve by this much
+                patience=10,       # As in paper: over this many epochs
+                restore_best_weights=True,
+                verbose=1
+            )
+            
+            # Train with early stopping
+            model_manager.contrastive_encoder.fit(
+                train_inputs, train_outputs,
+                validation_data=(val_inputs, val_outputs),
+                batch_size=128,
+                epochs=training_epochs if training_epochs else 50,  # Maximum number of epochs
+                callbacks=[early_stopping],
+                verbose=1
+            )
+        else:
+            # Not enough data for validation split, train on all data
+            print(f"Warning: Only {len(anchors)} triplets available, training without validation.")
+            model_manager.contrastive_encoder.fit(
+                combined_inputs, dummy_outputs,
+                batch_size=128,
+                epochs=training_epochs if training_epochs else 50,  # Fewer epochs since no early stopping
+                verbose=1
+            )
         
         # Setup scaler for consistent output range
         encoded_features = model_manager.contrastive_encoder.predict(features)
@@ -977,7 +1186,6 @@ def get_contrastive_projection(features, fitness_values, n_components=2, should_
         return scaled, None
     else:
         return scaled, None
-
 
 
 def set_global_random_state(seed):
