@@ -62,6 +62,11 @@ async def socket_server(websocket, path):
         calculate_novelty = jsonData.get('calculate_novelty', False)
         print('calculate_surprise: ', calculate_surprise)
         evorun_dir = jsonData.get('evorun_dir', '')
+        map_id = jsonData.get('map_id', None)
+        
+        # Print map_id if provided for debugging
+        if map_id is not None:
+            print(f'Using map_id: {map_id}')
 
         url_components = urlparse(path)
         request_path = url_components.path
@@ -81,7 +86,8 @@ async def socket_server(websocket, path):
                 calculate_surprise, components_list, use_autoencoder_for_surprise,
                 dynamic_components=dynamic_components,
                 selection_strategy=selection_strategy,
-                selection_params=selection_params
+                selection_params=selection_params,
+                map_id=map_id  # Pass map_id to the function
             )
             # Unpack the returned values
             projection, surprise_scores, feature_contribution, feature_indices, selected_pca_components, component_contribution = result
@@ -89,7 +95,8 @@ async def socket_server(websocket, path):
         elif request_path == '/autoencoder':
             projection, surprise_scores = projection_with_cleanup(
                 get_autoencoder_projection,
-                feature_vectors, dimensions, should_fit, evorun_dir, calculate_surprise
+                feature_vectors, dimensions, should_fit, evorun_dir, calculate_surprise,
+                map_id=map_id  # Pass map_id to the function
             )
             # Set these to None for non-PCA endpoints
             feature_contribution = None
@@ -100,7 +107,8 @@ async def socket_server(websocket, path):
         elif request_path == '/vae':
             projection, surprise_scores = projection_with_cleanup(
                 get_vae_projection,
-                feature_vectors, dimensions, should_fit, evorun_dir, calculate_surprise
+                feature_vectors, dimensions, should_fit, evorun_dir, calculate_surprise,
+                map_id=map_id  # Pass map_id to the function
             )
             # Set these to None for non-PCA endpoints
             feature_contribution = None
@@ -112,7 +120,8 @@ async def socket_server(websocket, path):
             projection, surprise_scores = projection_with_cleanup(
                 get_umap_projection,
                 feature_vectors, dimensions, should_fit, evorun_dir, calculate_surprise,
-                metric='cosine'
+                metric='cosine',
+                map_id=map_id  # Pass map_id to the function
             )
             # Set these to None for non-PCA endpoints
             feature_contribution = None
@@ -200,8 +209,8 @@ async def socket_server(websocket, path):
                     if request_path not in cell_range_max_for_projection or cell_range_max_for_projection[request_path] < projection_max:
                         cell_range_max_for_projection[request_path] = projection_max
                 
-                cell_range_min = cell_range_min_for_projection[request_path]
-                cell_range_max = cell_range_max_for_projection[request_path]
+                cell_range_min = cell_range_min_for_projection.get(request_path, projection_min)
+                cell_range_max = cell_range_max_for_projection.get(request_path, projection_max)
                 
                 cells = args.dimension_cells
                 discretised_projection = [

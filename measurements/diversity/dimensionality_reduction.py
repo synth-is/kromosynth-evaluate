@@ -119,10 +119,31 @@ class ModelManager:
 
 model_managers = {}
 
-def get_model_manager(evorun_dir):
-    if evorun_dir not in model_managers:
-        model_managers[evorun_dir] = ModelManager(evorun_dir)
-    return model_managers[evorun_dir]
+def get_model_manager(evorun_dir, map_id=None):
+    """
+    Get or create a model manager for the given evorun_dir and map_id.
+    When map_id is provided, it creates/retrieves a separate model manager for that map.
+    
+    Args:
+        evorun_dir: Base directory for storing models
+        map_id: Optional identifier for different maps (creates separate models per map)
+        
+    Returns:
+        ModelManager instance
+    """
+    # Create a unique key based on evorun_dir and map_id
+    if map_id is not None:
+        # Create a subdirectory for each map_id
+        model_dir = os.path.join(evorun_dir, f"map_{map_id}")
+    else:
+        model_dir = evorun_dir
+        
+    # Create a unique key for the model manager cache
+    cache_key = model_dir
+    
+    if cache_key not in model_managers:
+        model_managers[cache_key] = ModelManager(model_dir)
+    return model_managers[cache_key]
 
 def create_autoencoder(input_dim, latent_dim, random_state):
     tf.random.set_seed(random_state)
@@ -287,8 +308,8 @@ def calculate_surprise_score(reconstruction_loss, max_reconstruction_error, feat
 
 def get_pca_projection(features, n_components=2, should_fit=True, evorun_dir='', calculate_surprise=False, 
                       components_list=[], use_autoencoder=False, dynamic_components=False,
-                      selection_strategy='improved', selection_params=None):
-    model_manager = get_model_manager(evorun_dir)
+                      selection_strategy='improved', selection_params=None, map_id=None):
+    model_manager = get_model_manager(evorun_dir, map_id)
     
     # Type checking and conversion
     if isinstance(features, list):
@@ -298,6 +319,9 @@ def get_pca_projection(features, n_components=2, should_fit=True, evorun_dir='',
     
     print(f"Features shape: {features.shape}")
     print(f"Features dtype: {features.dtype}")
+    # Print map_id if provided for debugging
+    if map_id is not None:
+        print(f"Using map_id: {map_id} for PCA projection")
     
     # Initialize variables for feature and PCA analysis
     feature_contribution = None
@@ -484,8 +508,8 @@ def get_pca_projection(features, n_components=2, should_fit=True, evorun_dir='',
 
     return (scaled, surprise_scores, feature_contribution, feature_indices, selected_pca_components, component_contribution)
 
-def get_autoencoder_projection(features, n_components=2, should_fit=True, evorun_dir='', calculate_surprise=False, random_state=42):
-    model_manager = get_model_manager(evorun_dir)
+def get_autoencoder_projection(features, n_components=2, should_fit=True, evorun_dir='', calculate_surprise=False, random_state=42, map_id=None):
+    model_manager = get_model_manager(evorun_dir, map_id)
     
     # Ensure features is a 2D numpy array
     features = np.array(features, dtype=np.float32)
@@ -493,6 +517,9 @@ def get_autoencoder_projection(features, n_components=2, should_fit=True, evorun
         features = features.reshape(1, -1)
     
     print(f"Features shape: {features.shape}")
+    # Print map_id if provided for debugging
+    if map_id is not None:
+        print(f"Using map_id: {map_id} for autoencoder projection")
     
     if should_fit:
         print('Fitting autoencoder...')
@@ -555,12 +582,16 @@ def get_autoencoder_projection(features, n_components=2, should_fit=True, evorun
     else:
         return scaled, None
 
-def get_vae_projection(features, n_components=2, should_fit=True, evorun_dir='', calculate_surprise=False, random_state=42):
-    model_manager = get_model_manager(evorun_dir)
+def get_vae_projection(features, n_components=2, should_fit=True, evorun_dir='', calculate_surprise=False, random_state=42, map_id=None):
+    model_manager = get_model_manager(evorun_dir, map_id)
     
     features = np.array(features, dtype=np.float32)
     if features.ndim == 1:
         features = features.reshape(1, -1)
+    
+    # Print map_id if provided for debugging
+    if map_id is not None:
+        print(f"Using map_id: {map_id} for VAE projection")
     
     if should_fit:
         print('Fitting VAE...')
@@ -606,11 +637,15 @@ def get_vae_projection(features, n_components=2, should_fit=True, evorun_dir='',
     return scaled, None
 
 def get_umap_projection(features, n_components=2, should_fit=True, evorun_dir='', calculate_surprise=False, 
-                        random_state=42, n_neighbors=15, min_dist=0.1, metric='euclidean'):
-    model_manager = get_model_manager(evorun_dir)
+                        random_state=42, n_neighbors=15, min_dist=0.1, metric='euclidean', map_id=None):
+    model_manager = get_model_manager(evorun_dir, map_id)
     
     features = np.array(features)
     n_samples = features.shape[0]
+
+    # Print map_id if provided for debugging
+    if map_id is not None:
+        print(f"Using map_id: {map_id} for UMAP projection")
 
     # Special handling for very small datasets
     if n_samples < 4:  # UMAP needs at least 4 samples to work reliably
@@ -622,7 +657,8 @@ def get_umap_projection(features, n_components=2, should_fit=True, evorun_dir=''
             n_components=n_components, 
             should_fit=True, # use_fit, 
             evorun_dir=evorun_dir, 
-            calculate_surprise=calculate_surprise
+            calculate_surprise=calculate_surprise,
+            map_id=map_id  # Pass map_id to PCA fallback as well
         )
         # Extract just the projection and surprise scores from PCA result
         if calculate_surprise:
@@ -1019,6 +1055,7 @@ def get_contrastive_projection(
     random_seed=42,
     learning_rate=None,  # New parameter
     training_epochs=None,  # New parameter
+    map_id=None,  # Added map_id parameter
 ):
     """
     Learn a projection using contrastive learning with triplet loss.
@@ -1034,12 +1071,13 @@ def get_contrastive_projection(
         use_distance: Whether to use feature distance instead of fitness for triplet formation
         distance_metric: Distance metric to use ('cosine' or 'euclidean')
         random_seed: Random seed for reproducibility
+        map_id: Optional identifier for different maps (creates separate models per map)
         
     Returns:
         projection: Projected features in latent space
         surprise_scores: Surprise scores (if requested)
     """
-    model_manager = get_model_manager(evorun_dir)
+    model_manager = get_model_manager(evorun_dir, map_id)  # Updated to include map_id
     
     # Type checking and conversion
     if isinstance(features, list):
@@ -1049,6 +1087,10 @@ def get_contrastive_projection(
     
     print(f"Features shape: {features.shape}")
     print(f"Features dtype: {features.dtype}")
+    
+    # Print map_id if provided for debugging
+    if map_id is not None:
+        print(f"Using map_id: {map_id} for contrastive projection")
     
     if fitness_values is not None:
         print(f"Fitness values count: {len(fitness_values)}")
