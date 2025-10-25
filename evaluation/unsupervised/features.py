@@ -16,7 +16,7 @@ sys.path.append('../..')
 from measurements.diversity.audio_features import (
     get_feature_means_stdv_firstorderdifference_concatenated,
     get_mfcc_features, 
-    # get_vggish_embeddings, 
+    get_vggish_embeddings, 
     get_vggish_embeddings_essentia,
     # get_pann_embeddings, get_pann_embeddings_panns_inference,
     # get_clap_embeddings, get_encodec_embeddings,

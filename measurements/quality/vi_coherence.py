@@ -79,6 +79,11 @@ def multi_pitch_coherence_score(
         rolloff = librosa.feature.spectral_rolloff(y=audio, sr=sample_rate)
         bandwidth = librosa.feature.spectral_bandwidth(y=audio, sr=sample_rate)
         
+        # Skip if features are empty or contain NaNs
+        if (centroid.size == 0 or rolloff.size == 0 or bandwidth.size == 0 or
+            np.isnan(centroid).all() or np.isnan(rolloff).all() or np.isnan(bandwidth).all()):
+            continue
+        
         # Normalize and combine
         features = np.concatenate([
             centroid.flatten() / (sample_rate / 2),
@@ -88,8 +93,12 @@ def multi_pitch_coherence_score(
         
         spectral_features[pitch_delta] = features
     
+    # Need at least 2 valid pitches to compare
+    if len(spectral_features) < 2:
+        return 0.5
+    
     # Calculate pairwise similarities between adjacent octaves
-    pitches = sorted(audio_buffers_by_pitch.keys())
+    pitches = sorted(spectral_features.keys())  # Use keys from filtered features
     similarities = []
     
     for i in range(len(pitches) - 1):
@@ -143,12 +152,16 @@ def attack_consistency_score(
     for pitch_delta, audio in audio_buffers_by_pitch.items():
         onset_env = librosa.onset.onset_strength(y=audio, sr=sample_rate)
         
+        # Skip if onset envelope is empty or all zeros/NaNs
+        if len(onset_env) == 0 or np.isnan(onset_env).all() or np.max(onset_env) == 0:
+            continue
+        
         # Normalize
-        if len(onset_env) > 0 and np.max(onset_env) > 0:
-            onset_env = onset_env / (np.max(onset_env) + 1e-6)
-            attack_profiles[pitch_delta] = onset_env
+        onset_env = onset_env / (np.max(onset_env) + 1e-6)
+        attack_profiles[pitch_delta] = onset_env
     
-    if not attack_profiles:
+    # Need at least 2 valid pitches to compare
+    if len(attack_profiles) < 2:
         return 0.5
     
     # Compare attack shapes between adjacent pitches
@@ -202,9 +215,23 @@ def spectral_stability_score(
     
     for pitch_delta, audio in audio_buffers_by_pitch.items():
         mfccs = librosa.feature.mfcc(y=audio, sr=sample_rate, n_mfcc=13)
+        
+        # Skip if MFCCs are empty or contain NaNs
+        if mfccs.size == 0 or np.isnan(mfccs).all():
+            continue
+        
         # Average over time to get overall spectral character
         mfcc_mean = np.mean(mfccs, axis=1)
+        
+        # Skip if mean contains NaNs
+        if np.isnan(mfcc_mean).any():
+            continue
+        
         mfcc_features[pitch_delta] = mfcc_mean
+    
+    # Need at least 2 valid pitches to compare
+    if len(mfcc_features) < 2:
+        return 0.5
     
     # Compare spectral shapes across pitches
     pitches = sorted(mfcc_features.keys())
@@ -266,8 +293,8 @@ def evaluate_vi_coherence(
     )
     
     # Determine sound type and confidence
-    sound_type = "vi_worthy" if overall_score > 0.7 else "one_shot"
-    confidence = overall_score if sound_type == "vi_worthy" else (1.0 - overall_score)
+    sound_type = "VIworthy" if overall_score > 0.7 else "oneShot"
+    confidence = overall_score if sound_type == "VIworthy" else (1.0 - overall_score)
     
     return {
         'vi_pitch_coherence': pitch_coherence,

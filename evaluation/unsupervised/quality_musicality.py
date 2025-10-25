@@ -256,7 +256,10 @@ def evaluate_musicality(audio_data, sample_rate, config):
         if noise_result.get("rejected", False):
             elapsed = time.time() - start_time
             return {
-                "fitness": 0.0,
+                "fitness": {
+                    "top_score": 0.0,
+                    "top_score_class": "oneShot"
+                },
                 "rejected": True,
                 "reason": noise_result["reason"],
                 "metadata": noise_result,
@@ -321,7 +324,10 @@ def evaluate_musicality(audio_data, sample_rate, config):
             if requires_vi_eval:
                 elapsed = time.time() - start_time
                 return {
-                    "fitness": None,
+                    "fitness": {
+                        "top_score": None,
+                        "top_score_class": "oneShot"
+                    },
                     "requires_multi_pitch_evaluation": True,
                     "test_pitches": vi_config["test_pitches"],
                     "preliminary_scores": all_scores,
@@ -333,7 +339,7 @@ def evaluate_musicality(audio_data, sample_rate, config):
     fitness = aggregate_scores(all_scores, all_weights, aggregation_method)
     
     # Determine sound type classification
-    sound_type = "undecided"
+    sound_type = "oneShot"  # Default classification
     confidence = 0.5
     
     # Use VI metadata if available (from Phase 3)
@@ -344,23 +350,25 @@ def evaluate_musicality(audio_data, sample_rate, config):
         # Fallback: infer from VI coherence score
         vi_score = all_scores.get("vi_pitch_coherence", 0)
         if vi_score > 0.7:
-            sound_type = "VI-worthy"
+            sound_type = "VIworthy"
             confidence = 0.9
     elif "clarity_hnr" in all_scores:
         # Fallback: use spectral clarity scores
         clarity_score = all_scores.get("clarity_hnr", 0)
         snr_score = all_scores.get("noise_snr", 0)
         if clarity_score > 0.6 and snr_score > 0.8:
-            sound_type = "one-shot"
+            sound_type = "oneShot"
             confidence = 0.8
     
     elapsed = time.time() - start_time
     
     return {
-        "fitness": fitness,
+        "fitness": {
+            "top_score": fitness,
+            "top_score_class": sound_type
+        },
         "rejected": False,
         "scores": all_scores,
-        "sound_type": sound_type,
         "sound_type_confidence": confidence,
         "evaluation_time": elapsed
     }
