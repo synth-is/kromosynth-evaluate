@@ -153,7 +153,17 @@ def calculate_performance_spread(feature_vectors, fitness_values, classification
 def calculate_novelty_metric(feature_vectors, k=15, metric='euclidean'):
     # Convert feature_vectors to a numpy array if it's not already
     X = np.array(feature_vectors)
-    
+
+    # Adjust k if there aren't enough samples
+    # We need at least k+1 samples (k neighbors + the point itself)
+    n_samples = len(X)
+    if n_samples < 2:
+        # Not enough samples for novelty calculation
+        return np.zeros(n_samples)
+
+    # Adjust k to be at most n_samples - 1
+    k = min(k, n_samples - 1)
+
     if metric == 'euclidean':
         # Use NearestNeighbors with 'auto' algorithm for Euclidean distance
         nn = NearestNeighbors(n_neighbors=k+1, metric='euclidean', algorithm='auto')

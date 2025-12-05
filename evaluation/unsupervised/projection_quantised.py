@@ -44,6 +44,17 @@ def remove_duplicates_keep_highest(discretised_projection, fitness_values):
 
     return unique_projection, unique_fitness_values, indices_to_keep_sorted
 
+def convert_nan_to_none(obj):
+    """Recursively convert NaN values to None for JSON serialization."""
+    if isinstance(obj, float):
+        return None if np.isnan(obj) else obj
+    elif isinstance(obj, dict):
+        return {k: convert_nan_to_none(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [convert_nan_to_none(item) for item in obj]
+    else:
+        return obj
+
 cell_range_min_for_projection = {}
 cell_range_max_for_projection = {}
 async def socket_server(websocket, path):
@@ -375,6 +386,8 @@ async def socket_server(websocket, path):
                 'novelty_scores': novelty_scores.tolist() if novelty_scores is not None else None
             }
 
+        # Convert NaN values to None for valid JSON
+        response = convert_nan_to_none(response)
         await websocket.send(json.dumps(response))
         
     except Exception as e:
