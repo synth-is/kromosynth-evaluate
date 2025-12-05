@@ -7,3 +7,10 @@ In `./evaluation/supervised/` are evaluation implemtations based on supervised l
 `./measurements/diversity/` contains modules with different implementations of diversity measurements (like dimensionality reduction) and `./measurements/quality/` contains modules implementing various fitness / objective measures.
 
 [![DOI](https://zenodo.org/badge/698312039.svg)](https://zenodo.org/doi/10.5281/zenodo.10228947)
+
+
+## Python virtual environment activation
+
+```
+kromosynth-evaluate % source .venv/bin/activate
+```
