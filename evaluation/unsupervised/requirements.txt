@@ -39,7 +39,7 @@ joblib==1.3.2
 kapre==0.3.7
 keras==3.3.3
 kiwisolver==1.4.5
-laion-clap==1.1.2
+laion-clap==1.1.7
 lazy_loader==0.4
 libclang==18.1.1
 librosa==0.10.1
@@ -128,3 +128,5 @@ Werkzeug==3.0.3
 wget==3.2
 wrapt==1.16.0
 zipp==3.17.0
+ribs[all]>=0.8.0
+flask>=3.0.0
